@@ -28,12 +28,25 @@ app = flask.Flask(__name__)
 CORS(app)
 csrf = SeaSurf(app)
 app.secret_key = secrets_helper.get_secret('SECRET_KEY') or 'localkey'
+app.config['ENABLE_M0_HARNESS'] = os.environ.get('ENABLE_M0_HARNESS') == '1'
+
+
+@app.before_request
+def RestrictM0Harness():
+  path = flask.request.path
+  is_m0_resource = (
+      path == '/m0' or path.startswith('/static/m0') or
+      path.startswith('/static/litertlm_wasm_') or
+      path.startswith('/static/vendor/litert-lm/'))
+  if is_m0_resource and not app.config['ENABLE_M0_HARNESS']:
+    flask.abort(404)
 
 
 @app.after_request
 def AddM0IsolationHeaders(response):
   path = flask.request.path
-  if (path == '/m0' or path.startswith('/static/m0') or
+  if app.config['ENABLE_M0_HARNESS'] and (
+      path == '/m0' or path.startswith('/static/m0') or
       path.startswith('/static/litertlm_wasm_') or
       path.startswith('/static/vendor/litert-lm/')):
     response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'

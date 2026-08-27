@@ -1,9 +1,10 @@
 # Milestone 0 Feasibility Harness
 
-This directory and the `/m0` route implement the repeatable feasibility work
-defined by M0.1–M0.9 in `docs/on-device-llm-design.md`. The harness is isolated
-from the production suggestion path; it does not enable Local mode in the main
-application.
+This directory and the development-only `/m0` route document the repeatable
+feasibility work defined by M0.1–M0.9 in `docs/on-device-llm-design.md`. The
+harness source lives under `tools/m0-harness/`; it is isolated from the
+production suggestion path and is excluded from normal builds and deployments.
+It does not enable Local mode in the main application.
 
 ## Frozen tuple
 
@@ -22,17 +23,18 @@ Machine-readable details are in `artifact.json`.
 
 ```bash
 npm install
-npm run build:m0
 uv sync
-uv run main.py
+npm run dev:m0
 ```
 
-Open `http://localhost:5000/m0` in stable desktop Chrome. The page is served
-with COOP/COEP headers so page/Worker memory measurement can be used when Chrome
-supports it. The runtime JavaScript is bundled into the Worker. Loader scripts
-are copied from the pinned npm package to `/static/vendor/litert-lm/wasm/` and
-their Wasm binaries are also copied to `/static/`, where Emscripten resolves
-them relative to the classic Worker URL. No runtime CDN is used.
+Open `http://localhost:5000/m0` in stable desktop Chrome. `dev:m0` explicitly
+enables and builds the harness; the normal `npm run dev` returns 404 for this
+route. The page is served with COOP/COEP headers so page/Worker memory
+measurement can be used when Chrome supports it. The runtime JavaScript is
+bundled into the Worker. Loader scripts are copied from the pinned npm package
+to `/static/vendor/litert-lm/wasm/` and their Wasm binaries are also copied to
+`/static/`, where Emscripten resolves them relative to the classic Worker URL.
+No runtime CDN is used.
 
 The upstream package exports an unused default jsDelivr path, so that literal
 remains in the bundle. The M0 classic Worker explicitly calls `loadLiteRtLm()`

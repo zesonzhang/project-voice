@@ -16,8 +16,10 @@ The original request was to design support for running all sentence and word sug
 For the current implementation and validation state, see
 [`docs/m0/README.md`](./m0/README.md),
 [`docs/m0/compatibility.json`](./m0/compatibility.json), and
-[`docs/m0/decision.md`](./m0/decision.md). The M0 harness is available at
-`/m0`; it is intentionally isolated from the production suggestion path.
+[`docs/m0/decision.md`](./m0/decision.md). The M0 harness source is under
+`tools/m0-harness/` and is available at `/m0` only when explicitly started with
+`npm run dev:m0`; it is intentionally excluded from the production suggestion
+path, default build, and deployment.
 
 The requested user journey was:
 

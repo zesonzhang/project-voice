@@ -28,13 +28,13 @@ const common = {
 await Promise.all([
   build({
     ...common,
-    entryPoints: ['src/m0/index.ts'],
+    entryPoints: ['tools/m0-harness/index.ts'],
     format: 'esm',
     outfile: 'static/m0.js',
   }),
   build({
     ...common,
-    entryPoints: ['src/m0/inference-worker.ts'],
+    entryPoints: ['tools/m0-harness/inference-worker.ts'],
     format: 'iife',
     outfile: 'static/m0-inference-worker.js',
   }),

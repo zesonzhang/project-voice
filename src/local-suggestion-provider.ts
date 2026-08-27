@@ -1,4 +1,4 @@
-import {CANDIDATE_MODEL} from './m0/protocol.js';
+import {UNCONFIGURED_LOCAL_MODEL_IDENTITY} from './on-device/model-identity.js';
 import {renderPrompt} from './prompt-renderer.js';
 import {
   SuggestionPartialResultHandler,
@@ -15,8 +15,7 @@ export type LocalGenerator = (
 ) => Promise<string>;
 
 const DEFAULT_LOCAL_IDENTITY: SuggestionProviderIdentity = {
-  modelId: CANDIDATE_MODEL.id,
-  modelVersion: CANDIDATE_MODEL.repositoryCommit,
+  ...UNCONFIGURED_LOCAL_MODEL_IDENTITY,
 };
 
 export function normalizeLocalInput(

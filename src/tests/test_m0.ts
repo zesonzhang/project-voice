@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-import {parseNumberedSuggestions} from '../m0/parse-output.js';
+import {parseNumberedSuggestions} from '../../tools/m0-harness/parse-output.js';
 import {
   CANDIDATE_MODEL,
   isM0WorkerRequest,
   M0_PROTOCOL_VERSION,
-} from '../m0/protocol.js';
+} from '../../tools/m0-harness/protocol.js';
 
 describe('M0 feasibility harness', () => {
   describe('Worker protocol', () => {
