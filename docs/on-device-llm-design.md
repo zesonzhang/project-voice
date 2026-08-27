@@ -1,7 +1,7 @@
 # On-Device LLM Suggestions for Project VOICE
 
 **Status:** Proposed  
-**Last updated:** 2026-08-25
+**Last updated:** 2026-08-26
 
 **Target release:** To be determined after the feasibility milestone  
 **Overall estimate:** XL, approximately 26–36 engineer-weeks
@@ -32,18 +32,38 @@ Project VOICE is a web-based augmentative and alternative communication applicat
 
 The current suggestion flow is:
 
-```text
-User typing
-    ↓
-Lit frontend
-    ↓
-POST /run-macro
-    ↓
-Python backend renders a Jinja prompt
-    ↓
-Gemini API performs inference
-    ↓
-Frontend parses and displays suggestions
+```mermaid
+flowchart TD
+    subgraph Client["Client: Browser (Desktop Chrome)"]
+        UI["User Interface (Lit Web Components)"]
+        State["State / ConfigStorage (localStorage)"]
+        MacroClient["MacroApiClient"]
+        Parser["Suggestion Parser & Deduplicator"]
+
+        UI -->|"User Input & Context"| MacroClient
+        State -.->|"AI Config: Gemini Model"| MacroClient
+        MacroClient -->|"Display Suggestions"| UI
+        Parser -->|"Parsed Suggestions"| UI
+    end
+
+    subgraph Backend["Cloud Backend (App Engine / Flask)"]
+        RunMacroEndpoint["/run-macro API Endpoint"]
+        MacroEngine["macro.py Engine"]
+        JinjaTemplates["Jinja Prompt Templates (/templates/prompts)"]
+
+        RunMacroEndpoint --> MacroEngine
+        JinjaTemplates -->|"Render Prompts"| MacroEngine
+    end
+
+    subgraph ExternalAI["External Cloud AI Service"]
+        GeminiAPI["Google Gemini API"]
+        MacroEngine -->|"Remote Prompt Call"| GeminiAPI
+        GeminiAPI -->|"Generated Text Response"| MacroEngine
+    end
+
+    MacroClient -->|"HTTP POST /run-macro (Word & Sentence Requests)"| RunMacroEndpoint
+    MacroEngine -->|"Raw Numbered Suggestions"| RunMacroEndpoint
+    RunMacroEndpoint -->|"JSON Response"| Parser
 ```
 
 The frontend currently starts two requests for each suggestion update:
@@ -702,39 +722,89 @@ Use private GCS plus a backend-generated signed URL:
 
 ## 6. Architecture and Data Flow
 
-```text
-                             ┌──────────────────────────┐
-                             │ Settings / Local model UI │
-                             └─────────────┬────────────┘
-                                           │
-                        download/import/load/update/status
-                                           │
-                             ┌─────────────▼────────────┐
-                             │       ModelManager        │
-                             │ state machine + metadata  │
-                             └───────┬─────────┬────────┘
-                                     │         │
-                          model bytes│         │catalog/signed URL
-                                     │         │
-                              ┌──────▼───┐  ┌──▼───────────────┐
-                              │   OPFS   │  │ Python backend    │
-                              │ model    │  │ manifest + URL    │
-                              └──────┬───┘  └──┬───────────────┘
-                                     │         │
-                                     │         └──────► Private GCS
-                                     │
-User input ─► ProviderRouter ─► LocalSuggestionProvider
-                 │                   │
-                 │                   ├── local prompt renderer
-                 │                   └── Worker protocol
-                 │                            │
-                 │                   ┌────────▼─────────┐
-                 │                   │ Inference Worker │
-                 │                   │ RuntimeAdapter   │
-                 │                   │ LiteRT-LM/WebGPU │
-                 │                   └──────────────────┘
-                 │
-                 └── CloudSuggestionProvider ─► /run-macro ─► Gemini
+```mermaid
+flowchart TD
+    subgraph Browser["Client Browser (Desktop Chrome - Cross-Origin Isolated)"]
+        subgraph MainThread["Main UI Thread"]
+            UserUI["User Interface & AAC Input (Lit Components)"]
+            Settings["Settings Panel (Cloud vs On-Device Selection)"]
+            Router["SuggestionProviderRouter"]
+            CloudProvider["CloudSuggestionProvider"]
+            LocalProvider["LocalSuggestionProvider"]
+            PromptRenderer["In-Browser Jinja Prompt Renderer"]
+            ModelMgr["ModelManager (State Machine)"]
+            ParserLocal["Suggestion Parser & Normalizer"]
+        end
+
+        subgraph WorkerThread["Inference Web Worker (Dedicated Thread)"]
+            WorkerController["Worker Protocol Controller"]
+            RuntimeAdapter["LiteRT-LM ModelRuntimeAdapter"]
+            Engine["LiteRT-LM Core Engine (@litert-lm/core)"]
+            Tokenizer["Model Tokenizer & KV Cache Manager"]
+            Hasher["Streaming SHA-256 Verifier"]
+        end
+
+        subgraph ClientStorage["Browser Storage Layer"]
+            LS["localStorage (inferenceMode Preference)"]
+            IDB["IndexedDB (Version, Checksum, Offset, LKG Metadata)"]
+            OPFS["OPFS: Origin Private File System (.litertlm Model Files)"]
+        end
+
+        subgraph WebHardware["Hardware Acceleration"]
+            WebGPU["WebGPU API"]
+            OS_GPU["OS Graphics Driver & GPU (Direct3D / Metal / Vulkan)"]
+        end
+    end
+
+    subgraph CloudInfra["Backend & Cloud Infrastructure"]
+        FlaskBackend["App Engine / Flask Backend"]
+        ManifestAPI["GET /api/on-device-models/default"]
+        SigningAPI["POST /api/on-device-models/{id}/download-url"]
+        RunMacro["POST /run-macro (Cloud Mode Only)"]
+        GeminiService["Google Gemini API"]
+        PrivateGCS["Private Google Cloud Storage (Immutable Model Artifacts)"]
+    end
+
+    %% UI and Mode Routing
+    UserUI -->|"Text & Context"| Router
+    Settings -.->|"Update Mode"| LS
+    LS -.->|"Read Mode"| Router
+
+    %% Cloud Flow Path
+    Router -->|"Mode: Cloud"| CloudProvider
+    CloudProvider -->|"HTTP POST (Prompts/History)"| RunMacro
+    RunMacro --> FlaskBackend
+    FlaskBackend --> GeminiService
+    GeminiService --> FlaskBackend
+    FlaskBackend -->|"Suggestions"| CloudProvider
+    CloudProvider -->|"Display Suggestions"| UserUI
+
+    %% Local Flow Path
+    Router -->|"Mode: Local (Strict No-Cloud Fallback)"| LocalProvider
+    LocalProvider -->|"Render Jinja Templates"| PromptRenderer
+    PromptRenderer -->|"Rendered Prompt"| LocalProvider
+    LocalProvider -->|"GENERATE (Word First -> Sentence Second)"| WorkerController
+    WorkerController -->|"Stream Chunks"| ParserLocal
+    ParserLocal -->|"Parsed Suggestions"| UserUI
+
+    %% Worker Execution Flow
+    WorkerController --> RuntimeAdapter
+    RuntimeAdapter --> Engine
+    Engine --> Tokenizer
+    Engine -->|"Compute Pipelines"| WebGPU
+    WebGPU --> OS_GPU
+
+    %% Model Management & Download Flow
+    Settings --> ModelMgr
+    ModelMgr <-->|"Query & Store Metadata"| IDB
+    ModelMgr -->|"Fetch Catalog"| ManifestAPI
+    ModelMgr -->|"Request Signed URL"| SigningAPI
+    SigningAPI -->|"Short-lived Signed URL"| ModelMgr
+    ModelMgr -->|"Direct Range-based Download"| PrivateGCS
+    PrivateGCS -->|"Model Bytes Stream"| OPFS
+    OPFS -->|"File / Blob Stream"| Hasher
+    Hasher -->|"Integrity OK"| ModelMgr
+    OPFS -->|"Load Verified Model"| Engine
 ```
 
 ### 6.1 Cloud suggestion flow
@@ -1065,7 +1135,7 @@ In Local mode:
 | LiteRT-LM Web | Official Gemma/LiteRT orchestration; WebGPU; accepts Blob or stream; appropriate abstraction | Early preview; limited certified Web artifacts | **Selected** |
 | MediaPipe LLM Inference | Existing browser LLM implementation; legacy `.task` ecosystem | Google recommends migrating Web projects to LiteRT-LM; adds another artifact lifecycle | Not selected for v1 |
 | Raw LiteRT.js | Executes compatible `.tflite` graphs; broad low-level scope | Requires model-specific tokenizer, decoding, KV cache, tensor mapping, and sampler | Future adapter only |
-| Chrome built-in Prompt API | Browser-managed local model and storage | Cannot use project-provided GCS weights; availability and model control differ | Does not meet requirements |
+| Chrome built-in Prompt API | Browser-managed local model (Gemini Nano) & zero download overhead | Uses browser-provided model rather than custom GCS weights | Planned secondary built-in provider |
 | WebLLM or Transformers.js | Other mature browser-inference options | Different model formats and runtime stack; weaker match for LiteRT requirement | Not selected |
 
 Google’s current MediaPipe Web guidance recommends migration to LiteRT-LM. [MediaPipe LLM Web guide](https://developers.google.com/edge/mediapipe/solutions/genai/llm_inference/web_js)
@@ -1158,6 +1228,18 @@ Scenarios:
 
 ### 13.3 Release gates
 
+#### Performance SLOs and Acceptance Criteria Summary
+
+| Metric / Dimension | Target / Release Gate | Verification Method |
+|---|---|---|
+| **Privacy Invariant** | **0 bytes** sent to `/run-macro` or Gemini in Local mode | End-to-end network intercept tests during typing, errors, and cancellation |
+| **First Word Latency** | **p95 ≤ 2.0 seconds** (warm model session) | Automated typing benchmark harness on reference desktop hardware |
+| **Complete Result Latency** | **p95 ≤ 5.0 seconds** (word + sentence completions) | Automated benchmark harness across all supported prompt languages |
+| **UI Main-Thread Jitter** | **0 tasks > 200 ms** attributable to inference | Chrome Performance profiling & Long Tasks API during active inference |
+| **Persistence Stability** | **0 model re-downloads** across 5 reload/restart cycles | Automated browser lifecycle integration test suite |
+| **Memory Stability** | **< 10% memory growth** over 30-min soak test | `performance.measureUserAgentSpecificMemory()` continuous soak runner |
+| **Output Parse Rate** | **≥ 95% valid numbered suggestions** | Evaluation suite comparing model output to parser schemas |
+
 On the agreed desktop reference-device matrix:
 
 - No prompt or conversation data leaves the browser in Local mode.
@@ -1203,6 +1285,21 @@ Effort includes implementation, code review, and task-level tests. It does not i
 | M2: Model lifecycle | Backend manifest/signing APIs, GCS CORS, OPFS/IndexedDB manager, resumable download, checksum, persistence, update/rollback | 7–10 engineer-weeks, XL |
 | M3: Runtime and UI | LiteRT-LM adapter, Worker protocol, scheduling, Settings UX, status/resource panel, debug import | 5–7 engineer-weeks, XL |
 | M4: Hardening and rollout | Cross-origin isolation, self-hosted assets, security review, E2E/device testing, accessibility, soak testing, documentation | 5–7 engineer-weeks, XL |
+
+```mermaid
+flowchart LR
+    M0["M0: Feasibility & Benchmark (3–4 wks)"]
+    M1["M1: Provider & Prompts (4–6 wks)"]
+    M2["M2: Storage & Download Lifecycle (7–10 wks)"]
+    M3["M3: Runtime Adapter & Settings UX (5–7 wks)"]
+    M4["M4: Hardening, Security & Launch (5–7 wks)"]
+
+    M0 --> M1
+    M0 --> M2
+    M1 --> M3
+    M2 --> M3
+    M3 --> M4
+```
 
 The critical path is `M0 → M1 provider contracts → M2 storage activation → M3 runtime integration → M4 release gates`. Backend/GCS work from M2 can start after M0 and run in parallel with M1. UI mockups and accessibility review preparation can also begin during M2, but the final Settings integration depends on the ModelManager state contract.
 
@@ -1368,6 +1465,7 @@ Diagnostics must not contain prompts, persona, conversation history, or generate
 
 ## 17. Future Improvements
 
+- Support Chrome Built-in AI (Prompt API / `LanguageModel`) as a secondary zero-download local inference provider.
 - Full PWA installation and offline launch using a Service Worker.
 - Android Chrome and managed ChromeOS certification.
 - Multiple-model user selection.
