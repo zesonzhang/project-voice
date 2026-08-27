@@ -37,6 +37,7 @@ describe('State', () => {
     expect(state.lang.code).toEqual('ja-JP');
     expect(state.text).toEqual('');
     expect(state.aiConfig).toEqual(TEST_CONFIG.aiConfig);
+    expect(state.inferenceMode).toEqual('cloud');
     const aiConfigs = state.lang.aiConfigs;
     expect(state.model).toEqual(aiConfigs[TEST_CONFIG.aiConfig].model);
     expect(state.sentenceMacroId).toEqual(
@@ -74,6 +75,17 @@ describe('State', () => {
     expect(state.sentenceMacroId).toEqual(aiConfigs[newConfig].sentence);
     expect(state.wordMacroId).toEqual(aiConfigs[newConfig].word);
     expect(storage.read('aiConfig')).toEqual(newConfig);
+  });
+
+  it('migrates a malformed inference mode to cloud and persists Local mode', () => {
+    localStorage.setItem(
+      'test.inferenceMode',
+      JSON.stringify({value: 'elsewhere'}),
+    );
+    state = new State(storage);
+    expect(state.inferenceMode).toEqual('cloud');
+    state.inferenceMode = 'local';
+    expect(storage.read('inferenceMode')).toEqual('local');
   });
 
   it('updates expandAtOrigin correctly', () => {

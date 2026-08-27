@@ -40,11 +40,9 @@ import {html, LitElement} from 'lit';
 import {customElement, property, query, queryAll} from 'lit/decorators.js';
 
 import {AudioManager} from './audio-manager.js';
+import {CloudSuggestionProvider} from './cloud-suggestion-provider.js';
 import {ConfigStorage} from './config-storage.js';
-import {
-  CONFIG_DEFAULT,
-  LARGE_MARGIN_LINE_LIMIT,
-} from './constants.js';
+import {CONFIG_DEFAULT, LARGE_MARGIN_LINE_LIMIT} from './constants.js';
 import {InputSource, InputSourceKind} from './input-history.js';
 import {
   SMALL_KANA_TRIGGER,
@@ -52,9 +50,9 @@ import {
   STEGANA_INVERT,
 } from './keyboards/pv-fifty-key-keyboard.js';
 import {LANGUAGES} from './language.js';
+import {UnavailableLocalSuggestionProvider} from './local-suggestion-provider.js';
 import {sourceLocale, targetLocales} from './locale-codes.js';
 import * as jaModule from './locales/ja.js';
-import {MacroApiClient} from './macro-api-client.js';
 import {pvAppStyle} from './pv-app-css.js';
 import type {CharacterSelectEvent} from './pv-expand-keypad.js';
 import type {PvFunctionsBar} from './pv-functions-bar.js';
@@ -68,6 +66,12 @@ import {
 } from './pv-suggestion-stripe.js';
 import type {PvTextareaWrapper} from './pv-textarea-wrapper.js';
 import {State} from './state.js';
+import {
+  SuggestionProviderError,
+  SuggestionRequest,
+  SuggestionResult,
+} from './suggestion-provider.js';
+import {SuggestionProviderRouter} from './suggestion-provider-router.js';
 
 declare global {
   interface Window {
@@ -302,7 +306,7 @@ function formatConversationHistory(
 @customElement('pv-app')
 @localized()
 export class PvAppElement extends SignalWatcher(LitElement) {
-  private apiClient: MacroApiClient;
+  private providers: SuggestionProviderRouter;
   private stateInternal: State;
 
   // Persistent speech recognition instance for always-on mode
@@ -311,11 +315,16 @@ export class PvAppElement extends SignalWatcher(LitElement) {
 
   constructor(
     state: State | null = null,
-    apiClient: MacroApiClient | null = null,
+    providers: SuggestionProviderRouter | null = null,
   ) {
     super();
     this.stateInternal = state ?? new State();
-    this.apiClient = apiClient ?? new MacroApiClient();
+    this.providers =
+      providers ??
+      new SuggestionProviderRouter(
+        () => new CloudSuggestionProvider(),
+        new UnavailableLocalSuggestionProvider(),
+      );
   }
 
   get state(): State {
@@ -637,6 +646,7 @@ export class PvAppElement extends SignalWatcher(LitElement) {
 
   private timeoutId: number | undefined;
   private inFlightRequests = 0;
+  private suggestionRequestId = 0;
 
   private prevCallsMs: number[] = [];
 
@@ -650,6 +660,9 @@ export class PvAppElement extends SignalWatcher(LitElement) {
 
   async updateSuggestions() {
     window.clearTimeout(this.timeoutId);
+    const requestId = ++this.suggestionRequestId;
+    // Stop any previous route immediately, including after a mode switch.
+    this.providers.abort();
 
     const now = Date.now();
     this.prevCallsMs.push(now);
@@ -660,14 +673,45 @@ export class PvAppElement extends SignalWatcher(LitElement) {
       Date.now() - CONVERSATION_HISTORY_MAX_AGE_MS,
       CONVERSATION_HISTORY_MAX_TURNS,
     );
-    let memoryKey = '';
+    const memoryKey = '';
     const hasHistoryOrMemory = historyKey.length > 0 || memoryKey.length > 0;
     const isBlankAtCall = this.isBlank();
     const languageKey = this.stateInternal.lang.promptName;
+    const [firstHalf, secondHalf] = splitLastFewSentencesForLLM(
+      this.stateInternal.text,
+    );
+    const sentencePromptId =
+      this.state.features.sentenceMacroId ?? this.stateInternal.sentenceMacroId;
+    const wordPromptId =
+      this.state.features.wordMacroId ?? this.stateInternal.wordMacroId;
+
+    if (!sentencePromptId || !wordPromptId) {
+      console.error(
+        'Macro IDs are not properly configured. Please check src/constants.ts or src/language.ts.',
+        this.state.aiConfig,
+        sentencePromptId,
+        wordPromptId,
+      );
+      return;
+    }
+
+    const mode = this.stateInternal.inferenceMode;
+    const request: SuggestionRequest = {
+      text: secondHalf,
+      language: languageKey,
+      cloudModel: this.stateInternal.model,
+      sentencePromptId,
+      wordPromptId,
+      persona: this.stateInternal.persona,
+      lastInputSpeech: this.state.lastInputSpeech,
+      lastOutputSpeech: this.state.lastOutputSpeech,
+      conversationHistory: historyKey,
+      sentenceEmotion: this.state.emotion,
+    };
+    const cacheKey = this.cacheKey(mode, request, memoryKey);
 
     if (isBlankAtCall) {
       if (!hasHistoryOrMemory) {
-        this.apiClient.abortFetch();
         this.isLoading = false;
         this.suggestions = [];
         this.words = [];
@@ -675,8 +719,7 @@ export class PvAppElement extends SignalWatcher(LitElement) {
       }
 
       // Check cache
-      const cacheEntry =
-        this.cachedInitialSuggestionsByLanguage.get(languageKey);
+      const cacheEntry = this.cachedInitialSuggestionsByLanguage.get(cacheKey);
       if (
         cacheEntry &&
         cacheEntry.historyKey === historyKey &&
@@ -692,48 +735,37 @@ export class PvAppElement extends SignalWatcher(LitElement) {
     this.timeoutId = window.setTimeout(async () => {
       this.inFlightRequests++;
       this.isLoading = true;
-      const [firstHalf, secondHalf] = splitLastFewSentencesForLLM(
-        this.stateInternal.text,
-      );
-
-      const sentenceMacroId =
-        this.state.features.sentenceMacroId ??
-        this.stateInternal.sentenceMacroId;
-      const wordMacroId =
-        this.state.features.wordMacroId ?? this.stateInternal.wordMacroId;
-
-      if (!sentenceMacroId || !wordMacroId) {
-        console.error(
-          'Macro IDs are not properly configured. Please check src/constants.ts or src/language.ts.',
-          this.state.aiConfig,
-          sentenceMacroId,
-          wordMacroId,
-        );
+      let result: SuggestionResult | null = null;
+      try {
+        result = await this.providers.suggest(mode, request, partial => {
+          if (
+            requestId === this.suggestionRequestId &&
+            mode === this.stateInternal.inferenceMode
+          ) {
+            this.updateWords(partial.words);
+            this.requestUpdate();
+          }
+        });
+      } catch (error) {
+        if (error instanceof SuggestionProviderError) {
+          alert(error.message);
+        } else {
+          console.error('Suggestion provider failed.', error);
+        }
+      } finally {
+        this.inFlightRequests--;
+        if (this.inFlightRequests === 0) {
+          this.isLoading = false;
+        }
       }
-
-      const result = await this.apiClient.fetchSuggestions(
-        secondHalf,
-        this.stateInternal.lang.promptName,
-        this.stateInternal.model,
-        {
-          sentenceMacroId,
-          wordMacroId,
-          persona: this.stateInternal.persona,
-          lastInputSpeech: this.state.lastInputSpeech,
-          lastOutputSpeech: this.state.lastOutputSpeech,
-          conversationHistory: historyKey,
-          sentenceEmotion: this.state.emotion,
-        },
-      );
-      this.inFlightRequests--;
-      if (this.inFlightRequests === 0) {
-        this.isLoading = false;
-      }
-      if (!result) {
+      if (
+        !result ||
+        requestId !== this.suggestionRequestId ||
+        mode !== this.stateInternal.inferenceMode
+      ) {
         return;
       }
-      const [sentenceValues, words] = result;
-      const sentences = sentenceValues.map(
+      const sentences = result.sentences.map(
         s =>
           new SentenceSuggestion(
             SentenceSuggestionSource.LLM,
@@ -741,10 +773,10 @@ export class PvAppElement extends SignalWatcher(LitElement) {
           ),
       );
       this.updateSentences(sentences);
-      this.updateWords(words);
+      this.updateWords(result.words);
 
       if (isBlankAtCall) {
-        this.cachedInitialSuggestionsByLanguage.set(languageKey, {
+        this.cachedInitialSuggestionsByLanguage.set(cacheKey, {
           suggestions: sentences,
           historyKey: historyKey,
           memoryKey: memoryKey,
@@ -753,6 +785,29 @@ export class PvAppElement extends SignalWatcher(LitElement) {
 
       this.requestUpdate();
     }, this.delayBeforeFetchMs());
+  }
+
+  /** Keeps initial suggestions isolated across provider, model, prompt and context. */
+  private cacheKey(
+    mode: 'cloud' | 'local',
+    request: SuggestionRequest,
+    memory: string,
+  ) {
+    const identity = this.providers.getIdentity(mode, request);
+    return JSON.stringify({
+      mode,
+      ...identity,
+      sentence: request.sentencePromptId,
+      word: request.wordPromptId,
+      language: request.language,
+      text: request.text,
+      history: request.conversationHistory,
+      memory,
+      persona: request.persona,
+      lastInputSpeech: request.lastInputSpeech,
+      lastOutputSpeech: request.lastOutputSpeech,
+      emotion: request.sentenceEmotion,
+    });
   }
 
   /**
@@ -968,7 +1023,6 @@ export class PvAppElement extends SignalWatcher(LitElement) {
           @undo-click=${this.onUndoClick}
           @backspace-click=${this.onBackspaceClick}
           @delete-click=${this.onDeleteClick}
-
           @language-change-click=${this.onLanguageChangeClick}
           @keyboard-change-click=${this.onKeyboardChangeClick}
           @content-copy-click=${this.onContentCopyClick}
@@ -976,7 +1030,6 @@ export class PvAppElement extends SignalWatcher(LitElement) {
           @snackbar-close=${this.onSnackbarClose}
           @output-speech-click=${this.updateConversationHistory}
           @tts-end=${this.onTtsEnd}
-
         ></pv-functions-bar>
         <div class="main">
           ${
@@ -999,7 +1052,6 @@ export class PvAppElement extends SignalWatcher(LitElement) {
                 @character-select=${this.onCharacterSelect}
                 @keypad-handler-click=${this.onKeypadHandlerClick}
               ></pv-character-input>
-
             </div>
             <div class="suggestions">
               <ul class="word-suggestions">

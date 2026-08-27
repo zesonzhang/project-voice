@@ -20,6 +20,7 @@ export const RUN_MACRO_ENDPOINT_URL = '/run-macro';
 
 export const CONFIG_DEFAULT: Config = {
   aiConfig: 'gemini_3_flash',
+  inferenceMode: 'cloud',
   checkedLanguages: [],
   enableConversationMode: false,
   enableEarcons: false,

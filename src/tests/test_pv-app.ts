@@ -17,8 +17,10 @@
 import {ConfigStorage} from '../config-storage.js';
 import {CONFIG_DEFAULT} from '../constants.js';
 import {LANGUAGES} from '../language.js';
+import {MockLocalSuggestionProvider} from '../local-suggestion-provider.js';
 import {TEST_ONLY} from '../pv-app.js';
 import {State} from '../state.js';
+import {SuggestionProviderRouter} from '../suggestion-provider-router.js';
 import {TEST_CONFIG} from './test_config-storage.js';
 
 describe('USA App', () => {
@@ -415,6 +417,62 @@ describe('PvAppElement', () => {
         TEST_CONFIG.voiceSpeakingRate,
       );
       expect(element.state.lang.code).toBe('ja-JP');
+    });
+
+    it('makes no network request for Local typing and cancellation', async () => {
+      const storage = new ConfigStorage('test', TEST_CONFIG);
+      const state = new State(storage);
+      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
+      state.inferenceMode = 'local';
+      const fetchSpy = spyOn(window, 'fetch');
+      let cloudInstantiations = 0;
+      const local = new MockLocalSuggestionProvider(
+        (_prompt, signal) =>
+          new Promise((resolve, reject) => {
+            const timer = window.setTimeout(() => resolve('1. Local only'), 1);
+            signal.addEventListener('abort', () => {
+              window.clearTimeout(timer);
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          }),
+      );
+      const router = new SuggestionProviderRouter(() => {
+        cloudInstantiations++;
+        throw new Error('Cloud must not be instantiated');
+      }, local);
+      const element = new TEST_ONLY.PvAppElement(state, router);
+
+      state.text = 'first';
+      void element.updateSuggestions();
+      await new Promise(resolve => window.setTimeout(resolve, 0));
+      state.text = 'second';
+      void element.updateSuggestions();
+      await new Promise(resolve => window.setTimeout(resolve, 200));
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(cloudInstantiations).toBe(0);
+      expect(element.suggestions.map(item => item.value)).toEqual([
+        'Local only',
+      ]);
+    });
+
+    it('makes no network request when production Local is unavailable', async () => {
+      const storage = new ConfigStorage('test', TEST_CONFIG);
+      const state = new State(storage);
+      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
+      state.inferenceMode = 'local';
+      state.text = 'private text';
+      const fetchSpy = spyOn(window, 'fetch');
+      const alertSpy = spyOn(window, 'alert');
+      const element = new TEST_ONLY.PvAppElement(state);
+
+      void element.updateSuggestions();
+      await new Promise(resolve => window.setTimeout(resolve, 0));
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Local inference is not available yet.',
+      );
     });
   });
 

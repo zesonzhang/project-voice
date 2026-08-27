@@ -16,6 +16,7 @@
 
 export interface Config {
   aiConfig: string;
+  inferenceMode: InferenceMode;
   checkedLanguages: string[];
   enableEarcons: boolean;
   // TODO: Rename this field to more appropriate name as it just opens
@@ -34,6 +35,9 @@ export interface Config {
   voiceSpeakingRate: number;
   voicePrompt: string;
 }
+
+/** The only inference destinations supported by the client. */
+export type InferenceMode = 'cloud' | 'local';
 
 /** Provides methods to read and write configurations to local storage. */
 export class ConfigStorage {

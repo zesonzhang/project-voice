@@ -17,7 +17,7 @@
 import {signal} from '@lit-labs/signals';
 import {literal} from 'lit/static-html.js';
 
-import {ConfigStorage} from './config-storage.js';
+import {ConfigStorage, InferenceMode} from './config-storage.js';
 import {CONFIG_DEFAULT} from './constants.js';
 import {Language, LANGUAGES} from './language.js';
 
@@ -89,6 +89,18 @@ class State {
   }
 
   private aiConfigSignal = signal('gemini_3_flash');
+
+  private inferenceModeSignal = signal<InferenceMode>('cloud');
+
+  get inferenceMode(): InferenceMode {
+    return this.inferenceModeSignal.get();
+  }
+
+  set inferenceMode(mode: InferenceMode) {
+    const validMode: InferenceMode = mode === 'local' ? 'local' : 'cloud';
+    this.storage.write('inferenceMode', validMode);
+    this.inferenceModeSignal.set(validMode);
+  }
 
   get aiConfig() {
     return this.aiConfigSignal.get();
@@ -336,6 +348,9 @@ class State {
   private storage: ConfigStorage;
 
   loadState() {
+    // Missing values predate Local mode; malformed values must never enable it.
+    this.inferenceMode =
+      this.storage.read('inferenceMode') === 'local' ? 'local' : 'cloud';
     this.aiConfig = this.getValidAiConfig(this.storage.read('aiConfig'));
 
     this.checkedLanguages = this.storage.read('checkedLanguages');
