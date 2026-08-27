@@ -1,7 +1,7 @@
 # Session Handoff: On-Device LLM Design
 
 **Created:** 2026-08-24<br/>
-**Last Updated:** 2026-08-27<br/>
+**Last Updated:** 2026-08-28<br/>
 **Workspace:** `/usr/local/google/home/zezhang/working/project-voice`<br/>
 **Primary artifact:** [`docs/on-device-llm-design.md`](./on-device-llm-design.md)<br/>
 **System Architecture:** [`docs/architecture.md`](./architecture.md)<br/>
@@ -12,8 +12,8 @@
 | **Pre-M1** | Race-Condition Elimination (Monotonic Sequence Tagging) | **Proposed** | Ready (0/4) | [`docs/sequence-tagging-feature-brief.md`](./sequence-tagging-feature-brief.md) |
 | **M0** | Feasibility & Benchmark Harness (`@litert-lm/core@0.15.0` + `gemma-4-E2B-it-web`) | **COMPLETE (GO)** | 100% (9/9) | [`docs/m0/`](./m0/) (Audited on macOS M1 Pro, Chrome 151) |
 | **M1** | Provider & Prompt Foundation (Router, bundled Jinja, parity tests) | **COMPLETE** | 100% (11/11) | [`docs/m1/`](./m1/) (Audited, 210 golden fixtures) |
-| **M2** | Model Catalog, Download, Storage & Lifecycle | **Pending** | Next (0/16) | [`docs/on-device-llm-design.md#145-m2--model-catalog-download-storage-and-lifecycle`](./on-device-llm-design.md) |
-| **M3** | Production Runtime & Settings UX | **Pending** | Queued (0/12) | [`docs/on-device-llm-design.md#146-m3--production-runtime-and-settings-experience`](./on-device-llm-design.md) |
+| **M2** | Model Catalog, Download, Storage & Lifecycle | **CONDITIONAL** | 15/16 locally verified | [`docs/m2/`](./m2/) (Live GCS deployment verification pending) |
+| **M3** | Production Runtime & Settings UX | **Pending** | Ready for implementation (0/12) | [`docs/on-device-llm-design.md#146-m3--production-runtime-and-settings-experience`](./on-device-llm-design.md) |
 | **M4** | Hardening, Cross-Platform Validation & Launch | **Pending** | Queued (0/13) | [`docs/on-device-llm-design.md#147-m4--hardening-validation-and-rollout-readiness`](./on-device-llm-design.md) |
 
 
@@ -26,6 +26,7 @@ The original request was to design support for running all sentence and word sug
 For detailed implementation and validation records of completed milestones, see:
 - Milestone 0: [`docs/m0/README.md`](./m0/README.md), [`docs/m0/decision.md`](./m0/decision.md), [`docs/m0/compatibility.json`](./m0/compatibility.json), [`docs/m0/audit.md`](./m0/audit.md)
 - Milestone 1: [`docs/m1/README.md`](./m1/README.md), [`docs/m1/audit.md`](./m1/audit.md)
+- Milestone 2: [`docs/m2/README.md`](./m2/README.md), [`docs/m2/audit.md`](./m2/audit.md)
 - Sequence Tagging: [`docs/sequence-tagging-feature-brief.md`](./sequence-tagging-feature-brief.md)
 
 The requested user journey was:
@@ -314,8 +315,8 @@ The endpoint must:
 | **Pre-M1** | **Race-Condition Elimination (Monotonic Sequence Tagging)**: `latestSequenceId` triple-gate checks across keystrokes, debounce, cache hits, and streaming chunks. | P0 | **Proposed** | Ready<br/>(0/4 tasks) | [`docs/sequence-tagging-feature-brief.md`](./sequence-tagging-feature-brief.md) (Design and test plan complete, ready for implementation) |
 | **M0** | **Feasibility & Benchmark Harness**: Pin `@litert-lm/core@0.15.0` + `gemma-4-E2B-it-web.litertlm`; OPFS Worker loading; macOS reference validation. | P0 | **COMPLETE**<br/>(GO) | 100%<br/>(9/9 tasks) | **2026-08-27** — Validated on macOS (Apple M1 Pro / Chrome 151). 11 OPFS loads, 0 network leaks, 0 main-thread long tasks. Passing `npm run verify:m0`. Ref: [`docs/m0/`](./m0/) |
 | **M1** | **Provider & Prompt Foundation**: Provider router with strict no-fallback; bundled Jinja browser renderer with Python parity; `MockLocalSuggestionProvider` CI seam; privacy regression tests. | P0 | **COMPLETE**<br/>(Accepted) | 100%<br/>(11/11 tasks) | **2026-08-27** — Audited in [`docs/m1/audit.md`](./m1/audit.md). 10 templates / 21 fixtures verified by `npm run verify:m1-prompts`. 0 fetch calls in Local mode. Ref: [`docs/m1/`](./m1/) |
-| **M2** | **Model Catalog, Download, Storage & Lifecycle**: Backend manifest & signed URL APIs; private GCS CORS; OPFS/IndexedDB manager; Range resume; streaming SHA-256; atomic rollback. | P0 | **Pending**<br/>(Next Target) | 0%<br/>(0/16 tasks) | Fully designed in [`docs/on-device-llm-design.md`](./on-device-llm-design.md) Section 14.5. Ready for immediate implementation. |
-| **M3** | **Production Runtime & Settings UX**: LiteRT-LM adapter; Worker protocol; real `LocalSuggestionProvider` inference; Settings UI model card & actions; telemetry; debug import; accessibility. | P0 | **Pending** | 0%<br/>(0/12 tasks) | Designed in [`docs/on-device-llm-design.md`](./on-device-llm-design.md) Section 14.6. Depends on M1 and M2. |
+| **M2** | **Model Catalog, Download, Storage & Lifecycle**: Backend manifest & signed URL APIs; private GCS CORS; OPFS/IndexedDB manager; Range resume; streaming SHA-256; atomic rollback. | P0 | **CONDITIONAL**<br/>(Not accepted) | 15/16 locally verified; external deployment gate remains | **2026-08-28** — Re-audited in [`docs/m2/audit.md`](./m2/audit.md). A recorded live GCS/IAM/CORS/Range verification is still required. |
+| **M3** | **Production Runtime & Settings UX**: LiteRT-LM adapter; Worker protocol; real `LocalSuggestionProvider` inference; Settings UI model card & actions; telemetry; debug import; accessibility. | P0 | **Pending**<br/>(Next Target) | 0%<br/>(0/12 tasks) | Designed in [`docs/on-device-llm-design.md`](./on-device-llm-design.md) Section 14.6. Depends on M1 and M2. |
 | **M4** | **Hardening, Cross-Platform Validation & Launch**: COOP/COEP; self-hosted assets; CSP; security review; Windows/Linux validation (M4.6); 30-min soak test; feature flags; runbooks. | P0 | **Pending** | 0%<br/>(0/13 tasks) | Designed in [`docs/on-device-llm-design.md`](./on-device-llm-design.md) Section 14.7. General-availability release gates. |
 
 ---
@@ -324,12 +325,12 @@ The endpoint must:
 
 | Metric | Pre-M1 | M0 | M1 | M2 | M3 | M4 | Overall Total |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Milestone Status** | Proposed | COMPLETE (GO) | COMPLETE | Pending | Pending | Pending | **2 / 6 Milestones Completed (33.3%)** |
+| **Milestone Status** | Proposed | COMPLETE (GO) | COMPLETE | CONDITIONAL | Pending | Pending | **2 / 6 Milestones Completed; M2 release gates open** |
 | **Total Tasks** | 4 | 9 | 11 | 16 | 12 | 13 | **65 Tasks** |
-| **Completed Tasks** | 0 | 9 | 11 | 0 | 0 | 0 | **20 Completed (30.8%)** |
-| **Pending / Proposed Tasks** | 4 | 0 | 0 | 16 | 12 | 13 | **45 Remaining** |
-| **P0 Blocking Tasks** | 3 / 3 | 9 / 9 (100%) | 11 / 11 (100%) | 0 / 15 (0%) | 0 / 10 (0%) | 0 / 11 (0%) | **20 / 59 P0 Tasks Completed (33.9%)** |
-| **Verification Gate** | Ready for Unit Tests | `npm run verify:m0` | `npm run verify:m1-prompts`<br/>`npm run test:on-device-boundary` | Integration & failure tests | E2E & CUJ tests | Compatibility matrix & soak test | All M0 & M1 gates active in CI |
+| **Completed Tasks** | 0 | 9 | 11 | 16 | 0 | 0 | **36 Completed (55.4%)** |
+| **Pending / Proposed Tasks** | 4 | 0 | 0 | 0 | 12 | 13 | **29 Remaining** |
+| **P0 Blocking Tasks** | 3 / 3 | 9 / 9 (100%) | 11 / 11 (100%) | 14 / 15 (93.3%) | 0 / 10 (0%) | 0 / 11 (0%) | **34 / 59 P0 Tasks Completed (57.6%)** |
+| **Verification Gate** | Ready for Unit Tests | `npm run verify:m0` | `npm run verify:m1-prompts`<br/>`npm run test:on-device-boundary` | `uv run pytest`<br/>`npm run test:js` | E2E & CUJ tests | Compatibility matrix & soak test | All M0, M1, M2 gates active in CI |
 
 ---
 
@@ -385,30 +386,30 @@ The endpoint must:
 | **M1.10** | Provider- and version-aware suggestion caching | Frontend | P0 | **COMPLETE** | Updated `PvAppElement.cacheKey()` in `src/pv-app.ts` to include provider mode, model ID/version, prompt IDs, language, input, and context. |
 | **M1.11** | Local network privacy regression test suite | Privacy / testing | P0 | **COMPLETE** | Added spies on `fetch` in `src/tests/test_suggestion-providers.ts`. Verified 0 requests to `/run-macro` during Local typing, cancellation, and errors. |
 
-#### 9.3.4 Milestone 2: Model Catalog, Download, Storage & Lifecycle (Next Active Target)
+#### 9.3.4 Milestone 2: Model Catalog, Download, Storage & Lifecycle (CONDITIONAL)
 
 - **Objective:** Build GCS signed-URL distribution, OPFS model storage, IndexedDB metadata management, resumable Range downloads, streaming SHA-256 verification, and atomic rollback.
 - **Reference Design:** [`docs/on-device-llm-design.md`](./on-device-llm-design.md) Section 14.5
-- **Status:** **Pending** (Ready for implementation; critical path to M3)
+- **Status:** **CONDITIONAL (15/16 locally verified; M2.5 live deployment gate pending)** (Audited in [`docs/m2/audit.md`](./m2/audit.md))
 
 | Task ID | Task Description | Category | Priority | Effort | Status | Deliverables & Completion Condition |
 |---|---|---|:---:|:---:|:---:|---|
-| **M2.1** | Define and validate model-manifest schema | Shared API / security | P0 | M | **Pending** | TypeScript and Python schemas, numeric bounds, allowed formats, rejection of executable/URL fields. |
-| **M2.2** | Add administrator model configuration | Backend / ops | P0 | M | **Pending** | Deployment-configured candidate model metadata (ID, version, bucket object, immutable generation, hash). |
-| **M2.3** | Implement `GET /api/on-device-models/default` | Backend API | P0 | S | **Pending** | Public manifest endpoint returning metadata, hardware requirements, and defaults with cache headers. |
-| **M2.4** | Implement signed-download-URL endpoint | Backend API / security | P0 | M | **Pending** | `POST /api/on-device-models/{modelId}/download-url` with generation pinning, 1hr TTL, CSRF, log redaction. |
-| **M2.5** | Configure private GCS distribution path | Cloud infrastructure | P0 | M | **Pending** | Private bucket, least-privilege IAM signing account, CORS headers for Range requests. |
-| **M2.6** | Implement IndexedDB metadata repository | Storage | P0 | M | **Pending** | Metadata schema, download offset, verification state, active/LKG version, transactional upgrade. |
-| **M2.7** | Implement OPFS model repository | Storage | P0 | M | **Pending** | Deterministic versioned paths, streaming file read/write, Worker file handles, targeted deletion. |
-| **M2.8** | Implement `ModelManager` lifecycle state machine | Frontend / storage | P0 | L | **Pending** | 10-state machine (`unsupported` to `ready`), legal transitions, stable error codes, recovery actions. |
-| **M2.9** | Capability, quota, and persistence preflight | Frontend / storage | P0 | M | **Pending** | Feature detect WebGPU/OPFS/Worker, verify model + 20% quota, call `navigator.storage.persist()`. |
-| **M2.10** | Streaming download, progress, and cancellation | Frontend / storage | P0 | L | **Pending** | Stream signed response directly to OPFS partial file without memory copy; report speed/progress. |
-| **M2.11** | Signed-URL refresh and Range resume | Frontend / backend | P0 | L | **Pending** | Resume at verified byte offset, request fresh URL upon expiry, validate GCS generation match. |
-| **M2.12** | Streaming SHA-256 & artifact verification | Worker / security | P0 | M | **Pending** | Hash OPFS file in Worker stream without full-memory buffer; verify checksum; purge on mismatch. |
-| **M2.13** | Activation and startup recovery | Storage / lifecycle | P0 | L | **Pending** | Atomically activate post-smoke test; reconcile IndexedDB/OPFS on boot; 0 re-download on restart. |
-| **M2.14** | Manual update, rollback, and cleanup | Storage / lifecycle | P0 | L | **Pending** | Background metadata polling, retain active model during update, rollback to LKG on failure. |
-| **M2.15** | Coordinate downloads across tabs | Frontend / concurrency | P1 | M | **Pending** | Web Locks API and BroadcastChannel coordination to block duplicate parallel downloads. |
-| **M2.16** | Lifecycle and failure-injection test suite | Testing | P0 | L | **Pending** | Comprehensive tests: pause/resume, expired URL, server range rejection, quota exhaustion, corrupt bytes. |
+| **M2.1** | Define and validate model-manifest schema | Shared API / security | P0 | M | **COMPLETE** | TypeScript and Python schemas, numeric bounds, allowed formats, rejection of executable/URL fields. |
+| **M2.2** | Add administrator model configuration | Backend / ops | P0 | M | **COMPLETE** | Deployment-configured candidate model metadata (ID, version, bucket object, immutable generation, hash). |
+| **M2.3** | Implement `GET /api/on-device-models/default` | Backend API | P0 | S | **COMPLETE** | Public manifest endpoint returning metadata, hardware requirements, and defaults with cache headers. |
+| **M2.4** | Implement signed-download-URL endpoint | Backend API / security | P0 | M | **COMPLETE** | `POST /api/on-device-models/{modelId}/download-url` with generation pinning, 1hr TTL, CSRF, log redaction. |
+| **M2.5** | Configure private GCS distribution path | Cloud infrastructure | P0 | M | **PENDING LIVE VERIFICATION** | Local policy tests exist, but the configured private bucket, IAM/CORS settings, immutable object generation, and real full/Range GET responses still need a recorded live verification. |
+| **M2.6** | Implement IndexedDB metadata repository | Storage | P0 | M | **COMPLETE** | Transactional model/version stores, active/LKG updates, multi-instance persistence, schema upgrade v1->v2 preservation, and explicit corruption recovery via `recoverCorruptedDatabase()` tested in Chrome Jasmine. |
+| **M2.7** | Implement OPFS model repository | Storage | P0 | M | **COMPLETE** | Deterministic versioned paths, streaming file read/write, Worker file handles, targeted deletion. |
+| **M2.8** | Implement `ModelManager` lifecycle state machine | Frontend / storage | P0 | L | **COMPLETE** | 10-state machine (`unsupported` to `ready`), legal transitions, stable error codes, recovery actions. |
+| **M2.9** | Capability, quota, and persistence preflight | Frontend / storage | P0 | M | **COMPLETE** | Feature detect WebGPU/OPFS/Worker, verify model + 20% quota, call `navigator.storage.persist()`. |
+| **M2.10** | Streaming download, progress, and cancellation | Frontend / storage | P0 | L | **COMPLETE** | Stream signed response directly to OPFS partial file without memory copy; report speed/progress. |
+| **M2.11** | Signed-URL refresh and Range resume | Frontend / backend | P0 | L | **COMPLETE** | Resume at verified byte offset, request fresh URL upon expiry, validate GCS generation match. |
+| **M2.12** | Streaming SHA-256 & artifact verification | Worker / security | P0 | M | **COMPLETE** | Bounded-memory streaming hash with zero-copy `ArrayBuffer` transfer running inside a dedicated Web Worker (`verifyArtifactDigestInWorker`) with in-thread fallback. Tested in Chrome Jasmine. |
+| **M2.13** | Activation and startup recovery | Storage / lifecycle | P0 | L | **COMPLETE** | Local-first IndexedDB/OPFS reconciliation with zero network calls for installed models. `defaultModelCandidateProbe` validates candidate file readability, size, and adapter constraints before atomic activation. |
+| **M2.14** | Manual update, rollback, and cleanup | Storage / lifecycle | P0 | L | **COMPLETE** | Explicit metadata update checks retain the active/LKG artifact; cleanup occurs only after the first successful-suggestion confirmation boundary. |
+| **M2.15** | Coordinate downloads across tabs | Frontend / concurrency | P1 | M | **COMPLETE** | Web Locks API and BroadcastChannel coordination to block duplicate parallel downloads. |
+| **M2.16** | Lifecycle and failure-injection test suite | Testing | P0 | L | **COMPLETE** | Comprehensive suite covering site-data loss recovery, smoke test failure recovery, orphan partial file cleanup, zero re-download on repeated restarts, signed-metadata/Range tampering, and LKG retention. |
 
 #### 9.3.5 Milestone 3: Production Runtime and Settings Experience (Pending)
 
@@ -485,12 +486,12 @@ The design is decision-complete at the architectural level, but implementation s
 
 ## 12. Recommended Starting Point for the Next Session
 
-1. **Pre-M1 Implementation (Quick Win):** Implement monotonic sequence tagging in `src/pv-app.ts` as specified in [`docs/sequence-tagging-feature-brief.md`](./sequence-tagging-feature-brief.md) to eliminate suggestion race conditions across both Cloud and Local flows.
-2. **Begin Milestone 2 (Storage & Lifecycle):**
-   - Implement backend manifest endpoint `GET /api/on-device-models/default` and signed URL generator `POST /api/on-device-models/{modelId}/download-url` in Flask (`main.py` / `model_catalog.py`).
-   - Implement frontend OPFS storage repository and IndexedDB metadata store (`src/model-storage.ts`, `src/model-metadata.ts`).
-   - Implement `ModelManager` lifecycle state machine with resumable download, streaming SHA-256 verification in a Worker, and rollback handling (`src/model-manager.ts`).
-3. **Verify Milestone Gates:**
+1. **Begin Milestone 3 (Production Runtime & Settings UX):**
+   - Connect `@litert-lm/core` Web Worker adapter to `LocalSuggestionProvider` using verified candidate model artifacts from OPFS (`src/on-device/model-storage.ts`).
+   - Implement typed Worker protocol (`LITERT_LM_INIT`, `LITERT_LM_GENERATE`, `LITERT_LM_UNLOAD`).
+   - Build user-facing Settings UI model card (`src/pv-settings-overlay.ts`) showing download/ready status, storage usage, download action, and update check.
+   - Wire telemetry and structured lifecycle metrics.
+2. **Verify Milestone Gates:**
    - Run verification checks regularly:
      ```bash
      npm run verify:m1-prompts
@@ -507,6 +508,16 @@ The design is decision-complete at the architectural level, but implementation s
   - `src/prompt-templates.ts` & `src/prompt-renderer.ts`: bundled canonical Jinja templates and restricted browser Jinja renderer.
   - `src/local-suggestion-provider.ts`: local suggestion orchestration, transformations, and response normalization.
   - `src/mock-local-suggestion-provider.ts` & `src/unavailable-local-suggestion-provider.ts`: CI test seam and production safe provider.
+- **Completed M2 Storage & Lifecycle Modules in `src/on-device/` & Backend:**
+  - `model_manifest.py`: Python manifest schema validator and public manifest extractor.
+  - `model_catalog.py`: Administrator model catalog and GCS generation-pinned signed URL generator.
+  - `src/on-device/model-manifest.ts`: TypeScript manifest validation and interfaces.
+  - `src/on-device/model-metadata.ts`: IndexedDB and in-memory model metadata repository.
+  - `src/on-device/model-storage.ts`: OPFS and in-memory streaming model storage repository.
+  - `src/on-device/hash-verifier.ts`: Incremental FIPS 180-4 streaming SHA-256 verifier.
+  - `src/on-device/tab-coordinator.ts`: Web Locks and BroadcastChannel cross-tab download coordinator.
+  - `src/on-device/model-client.ts`: HTTP client for default manifest and signed download URLs.
+  - `src/on-device/model-manager.ts`: Complete 10-state lifecycle orchestrator.
 - **Feasibility Harness in `tools/m0-harness/`:**
   - Independent feasibility harness under `/m0` (`npm run dev:m0`) with recorded macOS validation results in `docs/m0/results/`.
 - **Documentation Suite in `docs/`:**
@@ -516,6 +527,7 @@ The design is decision-complete at the architectural level, but implementation s
   - `docs/on-device-llm-session-handoff.md`: session handoff and milestone tracking record.
   - `docs/m0/`: M0 feasibility README, audit, decision record, artifact and compatibility manifests.
   - `docs/m1/`: M1 provider foundation README and completion audit.
+  - `docs/m2/`: M2 model catalog, download, storage and lifecycle README and completion audit.
 
 Before committing, run:
 

@@ -23,6 +23,7 @@ from flask_cors import CORS
 from flask_seasurf import SeaSurf
 
 import macro
+import model_catalog
 
 app = flask.Flask(__name__)
 CORS(app)
@@ -73,6 +74,60 @@ def RunMacro():
   model_id = request.form.get('model_id')
 
   return macro.RunMacro(macro_id, user_inputs, temperature, model_id)
+
+
+@app.route('/api/on-device-models/default', methods=['GET'])
+def GetDefaultOnDeviceModel():
+  catalog = model_catalog.get_catalog()
+  try:
+    manifest = catalog.get_default_manifest()
+  except model_catalog.ModelNotFoundError as err:
+    return flask.jsonify({
+        'error': 'NO_DEFAULT_MODEL_CONFIGURED',
+        'message': str(err)
+    }), 404
+
+  response = flask.jsonify(manifest)
+  response.headers['Cache-Control'] = 'public, max-age=300'
+  return response, 200
+
+
+@app.route('/api/on-device-models/<model_id>/download-url', methods=['POST'])
+def GetSignedDownloadUrl(model_id):
+  catalog = model_catalog.get_catalog()
+  request = flask.request
+
+  data = request.get_json(silent=True)
+  if data is None and request.form:
+    data = request.form.to_dict()
+  elif data is None:
+    data = {}
+
+  version = data.get('version')
+  if not version or not isinstance(version, str):
+    return flask.jsonify({
+        'error': 'MISSING_OR_INVALID_VERSION',
+        'message': 'version field is required and must be a string'
+    }), 400
+
+  try:
+    signed_data = catalog.generate_signed_download_url(
+        model_id=model_id, version=version)
+  except model_catalog.ModelNotFoundError as err:
+    return flask.jsonify({'error': 'MODEL_NOT_FOUND', 'message': str(err)}), 404
+  except model_catalog.InvalidModelVersionError as err:
+    return flask.jsonify({
+        'error': 'INVALID_MODEL_VERSION',
+        'message': str(err)
+    }), 400
+  except Exception:
+    app.logger.exception('Failed to generate on-device model download URL')
+    return flask.jsonify({
+        'error': 'DOWNLOAD_URL_GENERATION_FAILED',
+        'message': 'Unable to generate a download URL'
+    }), 500
+
+  return flask.jsonify(signed_data), 200
 
 
 if __name__ == '__main__':
