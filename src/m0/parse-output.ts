@@ -1,5 +1,5 @@
 /**
- * Copyright 2024 Google LLC
+ * Copyright 2026 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
-import './test_config-storage.js';
-import './test_input-history.js';
-import './test_macro-api-client.js';
-import './test_pv-app.js';
-import './test_pv-suggestion-stripe.js';
-import './test_state.js';
-import './test_language.js';
-import './test_m0.js';
+export function parseNumberedSuggestions(
+  response: string,
+  limit = 5,
+): string[] {
+  const suggestions = response
+    .replaceAll('\\\n', '')
+    .split('\n')
+    .map(text => text.trim())
+    .filter(text => /^[0-9]+\./.test(text))
+    .map(text => text.replace(/^\d+\.\s?/, ''))
+    .filter(Boolean);
+  return Array.from(new Set(suggestions)).slice(0, limit);
+}

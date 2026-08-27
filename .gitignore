@@ -7,10 +7,15 @@ src/locale-codes.ts
 src/locales/
 static/index.js
 static/locales/
+static/m0.js
+static/m0.js.map
+static/m0-inference-worker.js
+static/m0-inference-worker.js.map
+static/litertlm_wasm_*.wasm
+static/vendor/litert-lm/
 
 *storybook.log
 /storybook-static
 uv.lock
 requirements.txt
 .python-version
-

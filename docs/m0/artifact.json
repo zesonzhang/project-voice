@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "frozenAt": "2026-08-25T00:00:00Z",
+  "runtime": {
+    "package": "@litert-lm/core",
+    "version": "0.15.0",
+    "npmIntegrity": "sha512-NWLgsQ7ktO2dCsx2z/KzX9r/1VL2Sfjl31zskCAzGwq8ujPRrBzJXz2IXCQJ1Kj29IaVa4b86SDR0aoAURuWJw==",
+    "wasmLoaderScriptPath": "/static/vendor/litert-lm/wasm/",
+    "wasmBinaryPath": "/static/",
+    "cdnRequiredAtRuntime": false
+  },
+  "model": {
+    "id": "gemma-4-e2b-it-web",
+    "family": "Gemma 4",
+    "adapterId": "litert-lm",
+    "format": "litertlm",
+    "filename": "gemma-4-E2B-it-web.litertlm",
+    "byteSize": 2008432640,
+    "sha256": "3a08e8d94e23b814ae5414469c370c503813949acb8ceaa17e4ebf8a35af35b5",
+    "repository": "litert-community/gemma-4-E2B-it-litert-lm",
+    "repositoryCommit": "6b78abd019e61a1ca4cbe3b212d2c9ce8ff38a94",
+    "source": "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/6b78abd019e61a1ca4cbe3b212d2c9ce8ff38a94/gemma-4-E2B-it-web.litertlm",
+    "license": "Apache-2.0",
+    "compatibilityBasis": "Listed by the upstream LiteRT-LM JavaScript package as a supported Web artifact"
+  },
+  "localVerification": {
+    "verifiedAt": "2026-08-25T02:18:00Z",
+    "byteSizeMatched": true,
+    "sha256Matched": true,
+    "artifactCommittedToRepository": false
+  },
+  "distributionReview": {
+    "status": "approved-for-feasibility-only",
+    "basis": "The upstream artifact is public under Apache-2.0 and is downloaded only to a developer machine for this feasibility milestone.",
+    "productionRedistributionApproved": false,
+    "note": "Production GCS distribution and its license review remain a deployment input for M2."
+  }
+}

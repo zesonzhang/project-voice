@@ -3,13 +3,21 @@
 **Created:** 2026-08-24  
 **Workspace:** `/Users/zezhang/working/project-voice`  
 **Primary artifact:** [`docs/on-device-llm-design.md`](./on-device-llm-design.md)  
-**Implementation status:** Design only; no application code or dependencies changed
+**Implementation status:** M0 feasibility harness and real macOS evidence
+completed on 2026-08-27; the current M0 decision is GO for subsequent
+development. Windows and Linux compatibility validation is deferred to M4.6.
 
 ## 1. Purpose of This Handoff
 
 This document records the context, decisions, repository findings, and remaining work from the session that produced the on-device LLM design for Project VOICE. A new session should read this handoff first, then use the primary design document as the source of truth.
 
 The original request was to design support for running all sentence and word suggestions locally in Chrome, without calling Gemini after the user selects an on-device model.
+
+For the current implementation and validation state, see
+[`docs/m0/README.md`](./m0/README.md),
+[`docs/m0/compatibility.json`](./m0/compatibility.json), and
+[`docs/m0/decision.md`](./m0/decision.md). The M0 harness is available at
+`/m0`; it is intentionally isolated from the production suggestion path.
 
 The requested user journey was:
 
@@ -384,4 +392,3 @@ npm run dev
 npm test
 npm run lint
 ```
-

@@ -30,9 +30,25 @@ csrf = SeaSurf(app)
 app.secret_key = secrets_helper.get_secret('SECRET_KEY') or 'localkey'
 
 
+@app.after_request
+def AddM0IsolationHeaders(response):
+  path = flask.request.path
+  if (path == '/m0' or path.startswith('/static/m0') or
+      path.startswith('/static/litertlm_wasm_') or
+      path.startswith('/static/vendor/litert-lm/')):
+    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+    response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
+  return response
+
+
 @app.route('/')
 def Root():
   return flask.make_response(flask.render_template('index.jinja'))
+
+
+@app.route('/m0')
+def M0():
+  return flask.make_response(flask.render_template('m0.jinja'))
 
 
 @app.route('/run-macro', methods=['POST'])

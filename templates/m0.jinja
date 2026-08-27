@@ -1,0 +1,118 @@
+<!doctype html>
+<!--
+ Copyright 2026 Google LLC
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Project VOICE M0 feasibility harness</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+      body { margin: 0 auto; max-width: 1100px; padding: 24px; }
+      h1, h2 { line-height: 1.2; }
+      section { border: 1px solid #8888; border-radius: 12px; margin: 16px 0;
+        padding: 16px; }
+      button, input, select { font: inherit; margin: 4px; min-height: 42px;
+        padding: 8px 12px; }
+      button:focus-visible, select:focus-visible { outline: 3px solid #1a73e8; }
+      pre { background: #8882; border-radius: 8px; overflow-wrap: anywhere;
+        padding: 12px; white-space: pre-wrap; }
+      progress { display: block; height: 24px; margin-top: 8px; width: 100%; }
+      #status { border-left: 5px solid #188038; padding-left: 12px; }
+      #status[data-error="true"] { border-color: #d93025; }
+      .note { max-width: 80ch; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Project VOICE · M0 feasibility harness</h1>
+      <p class="note">This isolated page loads the pinned LiteRT-LM runtime from
+        same-origin assets and the frozen Gemma artifact only from OPFS. Exported
+        diagnostics contain metrics and environment metadata, never prompts or
+        generated text.</p>
+      <p id="status" role="status" aria-live="polite">Starting Worker…</p>
+
+      <section aria-labelledby="candidate-heading">
+        <h2 id="candidate-heading">1. Candidate and capabilities</h2>
+        <button id="check-capabilities">Check capabilities</button>
+        <button id="model-info">Check OPFS model</button>
+        <p><strong>OPFS:</strong> <span id="model-state">Checking…</span></p>
+        <details><summary>Frozen candidate</summary><pre id="candidate"></pre></details>
+        <details><summary>Capabilities</summary><pre id="capabilities"></pre></details>
+      </section>
+
+      <section aria-labelledby="install-heading">
+        <h2 id="install-heading">2. Install once</h2>
+        <p class="note">The remote action downloads about 1.87 GiB. Local import
+          accepts only the exact frozen filename and byte size. SHA-256 is verified
+          with the command documented in <code>docs/m0/README.md</code>.</p>
+        <button id="install-url">Download frozen candidate</button>
+        <button id="install-file">Import downloaded candidate</button>
+        <input id="model-file" type="file" accept=".litertlm" hidden>
+        <progress id="progress" aria-label="Model installation progress" hidden></progress>
+        <span id="progress-label" aria-live="polite"></span>
+      </section>
+
+      <section aria-labelledby="runtime-heading">
+        <h2 id="runtime-heading">3. Load, generate, cancel, and recreate</h2>
+        <button id="load-model">Load from OPFS</button>
+        <select id="benchmark-case" aria-label="Benchmark prompt"></select>
+        <button id="run-case">Run case</button>
+        <button id="cancel">Cancel</button>
+        <button id="unload-model">Unload</button>
+        <button id="remove-model">Remove OPFS model</button>
+        <h3>Streaming output (excluded from export)</h3>
+        <pre id="output" aria-live="polite"></pre>
+      </section>
+
+      <section aria-labelledby="results-heading">
+        <h2 id="results-heading">4. Results</h2>
+        <fieldset>
+          <legend>Reference device metadata (required for export)</legend>
+          <label for="device-run-id">Device run ID</label>
+          <input id="device-run-id" placeholder="macos-m1pro-chrome151"
+            pattern="[a-z0-9\-]+">
+          <label for="os-family">OS family</label>
+          <select id="os-family">
+            <option value="">Select…</option>
+            <option value="macOS">macOS</option>
+            <option value="Windows">Windows</option>
+            <option value="Linux">Linux</option>
+          </select>
+          <label for="os-version">OS version</label>
+          <input id="os-version" placeholder="macOS 26.6.1 (25G76)">
+          <label for="ram-class">RAM class</label>
+          <select id="ram-class">
+            <option value="">Select…</option>
+            <option value="4">4 GiB</option>
+            <option value="8">8 GiB</option>
+            <option value="16">16 GiB</option>
+            <option value="32">32 GiB</option>
+            <option value="64">64 GiB</option>
+            <option value="128">128 GiB</option>
+          </select>
+          <label for="gpu-driver">GPU / driver or graphics backend</label>
+          <input id="gpu-driver" placeholder="Apple M1 Pro / Metal">
+        </fieldset>
+        <p id="record-count"></p>
+        <button id="export-results">Export sanitized JSON</button>
+        <button id="clear-results">Clear results</button>
+        <pre id="log" aria-live="polite"></pre>
+      </section>
+    </main>
+    <script type="module" src="/static/m0.js"></script>
+  </body>
+</html>

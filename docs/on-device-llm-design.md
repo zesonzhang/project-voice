@@ -1198,7 +1198,7 @@ Effort includes implementation, code review, and task-level tests. It does not i
 
 | Milestone | Deliverables | Effort |
 |---|---|---:|
-| M0: Feasibility and benchmark | Pin LiteRT-LM version; load target Gemma from OPFS in a Worker; validate Chrome/macOS/Windows/Linux, cancellation, memory, output, and latency | 3–4 engineer-weeks, L |
+| M0: Feasibility and benchmark | Pin LiteRT-LM version; load target Gemma from OPFS in a Worker; validate the macOS development reference device for cancellation, memory, output, and latency | 3–4 engineer-weeks, L |
 | M1: Provider and prompt foundation | Provider router, Local provider contract, bundled prompt renderer, Python/browser golden tests, provider-aware caching | 4–6 engineer-weeks, XL |
 | M2: Model lifecycle | Backend manifest/signing APIs, GCS CORS, OPFS/IndexedDB manager, resumable download, checksum, persistence, update/rollback | 7–10 engineer-weeks, XL |
 | M3: Runtime and UI | LiteRT-LM adapter, Worker protocol, scheduling, Settings UX, status/resource panel, debug import | 5–7 engineer-weeks, XL |
@@ -1218,11 +1218,11 @@ The critical path is `M0 → M1 provider contracts → M2 storage activation →
 | M0.4 | Prove model persistence and load from OPFS | Storage / runtime | P0 | M | Copy the artifact into OPFS once, close and reopen the page, pass an OPFS `File`, `Blob`, or stream to LiteRT-LM, and demonstrate that the second run performs no model-byte network request. |
 | M0.5 | Validate cancellation and resource cleanup | Runtime | P0 | M | Cancel during prefill and decode, discard late chunks, delete conversations, recreate the engine, and exercise WebGPU device-loss handling where test tooling permits. No stale result may reach the UI. |
 | M0.6 | Build a repeatable benchmark harness | Performance | P0 | M | Capture cold load time, warm load time, time to first token, time to first parsed suggestion, complete word/sentence latency, tokens/sec, page memory estimate, OPFS size, main-thread long tasks, and errors. Store results without prompt/persona content. |
-| M0.7 | Run the reference Chrome/device matrix | QA / compatibility | P0 | L | Test current stable Chrome on at least one supported macOS, Windows, and Linux device with WebGPU. Record browser version, OS, GPU/driver, RAM class, success/failure, and benchmark results. A missing WebGPU adapter is a supported capability failure, not a runtime crash. |
+| M0.7 | Establish the macOS development reference device | QA / compatibility | P0 | M | Test current stable Chrome on one macOS WebGPU device. Record browser version, OS, GPU/driver, RAM class, success/failure, and benchmark results. A missing WebGPU adapter is a supported capability failure, not a runtime crash. Windows and Linux coverage is deferred to M4.6. |
 | M0.8 | Validate representative prompt/output behavior | Model quality | P0 | S | Run word and sentence prompts for English, Japanese, and Mandarin, verify streaming and numbered-list parsing, and note output-format or language failures. This is a feasibility gate, not a full semantic-quality evaluation. |
 | M0.9 | Publish the compatibility record and go/no-go decision | Architecture | P0 | S | Record the certified tuple of app/runtime/model/Chrome environments, known limitations, and whether the Section 13.3 release targets appear reachable. If no-go, stop implementation and request a smaller or correctly packaged model or an explicit design revision. |
 
-**M0 exit criteria:** M0.1–M0.9 are complete; the candidate loads from OPFS in a Worker, generates parseable suggestions, cancels safely, and has a documented supported-device envelope. The exact runtime and model versions are frozen for subsequent milestones.
+**M0 exit criteria:** M0.1–M0.9 are complete on the macOS development reference device; the candidate loads from OPFS in a Worker, generates parseable suggestions, cancels safely, and has a documented macOS development envelope. The exact runtime and model versions are frozen for subsequent milestones. Windows and Linux remain general-availability compatibility gates in M4.6.
 
 ### 14.4 M1 — Provider and prompt foundation
 
