@@ -53,8 +53,10 @@ def configured_catalog(config_dict=None):
 
 @pytest.fixture(autouse=True)
 def reset_catalog():
+  main.SIGNED_URL_RATE_LIMITER.clear()
   reset_catalog_for_testing(configured_catalog())
   yield
+  main.SIGNED_URL_RATE_LIMITER.clear()
   reset_catalog_for_testing(None)
 
 
@@ -226,6 +228,10 @@ def test_api_post_signed_download_url(csrf_client):
   assert data['gcsGeneration'] == '1738700000000000'
   assert data[
       'sha256'] == '3a08e8d94e23b814ae5414469c370c503813949acb8ceaa17e4ebf8a35af35b5'
+  assert response.headers['Cache-Control'] == 'private, no-store'
+  assert response.headers['Pragma'] == 'no-cache'
+  assert response.headers['Vary'] == 'Cookie'
+  assert 'Access-Control-Allow-Origin' not in response.headers
 
 
 def test_api_post_signed_download_url_requires_csrf():
@@ -235,6 +241,21 @@ def test_api_post_signed_download_url_requires_csrf():
       json={'version': '2026-08-01'},
   )
   assert response.status_code == 403
+  assert response.get_json()['error'] == 'FORBIDDEN'
+  assert response.headers['Cache-Control'] == 'no-store'
+
+
+def test_api_post_signed_download_url_requires_authorized_app_session(
+    csrf_client):
+  with csrf_client.session_transaction() as session:
+    session.pop('model_download_authorized', None)
+
+  response = csrf_client.post(
+      '/api/on-device-models/gemma-web-default/download-url',
+      json={'version': '2026-08-01'},
+  )
+  assert response.status_code == 403
+  assert response.get_json()['error'] == 'FORBIDDEN'
 
 
 def test_api_post_signed_download_url_invalid_version(csrf_client):
@@ -245,6 +266,23 @@ def test_api_post_signed_download_url_invalid_version(csrf_client):
   assert response.status_code == 400
   data = response.get_json()
   assert data['error'] == 'INVALID_MODEL_VERSION'
+
+
+def test_api_post_signed_download_url_rejects_malformed_identifiers(
+    csrf_client):
+  bad_model = csrf_client.post(
+      '/api/on-device-models/UPPERCASE/download-url',
+      json={'version': '2026-08-01'},
+  )
+  assert bad_model.status_code == 404
+  assert bad_model.get_json()['error'] == 'MODEL_NOT_FOUND'
+
+  bad_version = csrf_client.post(
+      '/api/on-device-models/gemma-web-default/download-url',
+      json={'version': 'safe\nforged-log'},
+  )
+  assert bad_version.status_code == 400
+  assert bad_version.get_json()['error'] == 'MISSING_OR_INVALID_VERSION'
 
 
 def test_api_post_signed_download_url_model_not_found(csrf_client):
@@ -310,6 +348,52 @@ def test_manifest_rejects_unknown_nested_fields_and_non_finite_numbers():
   manifest['generation']['temperature'] = float('nan')
   with pytest.raises(ManifestValidationError, match='temperature'):
     validate_manifest(manifest, allow_private_fields=True)
+
+
+@pytest.mark.parametrize(('field', 'value'), [
+    ('gcsBucket', 'https://storage.googleapis.com/evil'),
+    ('gcsBucket', 'UPPERCASE-BUCKET'),
+    ('gcsObject', '../model.litertlm'),
+    ('gcsObject', '/absolute/model.litertlm'),
+    ('gcsObject', 'models/model.js'),
+    ('gcsObject', 'models/model.litertlm\nforged-log'),
+])
+def test_manifest_rejects_unsafe_private_storage_bindings(field, value):
+  manifest = copy.deepcopy(DEFAULT_FROZEN_MODEL_CONFIG)
+  manifest[field] = value
+  with pytest.raises(ManifestValidationError):
+    validate_manifest(manifest, allow_private_fields=True)
+
+
+def test_manifest_rejects_unsafe_display_name_and_generation_bounds():
+  manifest = copy.deepcopy(DEFAULT_FROZEN_MODEL_CONFIG)
+  manifest['displayName'] = 'safe\nforged-log-entry'
+  with pytest.raises(ManifestValidationError, match='displayName'):
+    validate_manifest(manifest, allow_private_fields=True)
+
+  manifest = copy.deepcopy(DEFAULT_FROZEN_MODEL_CONFIG)
+  manifest['generation']['maxOutputTokens'] = (
+      manifest['capabilities']['maxOutputTokens'] + 1)
+  with pytest.raises(ManifestValidationError, match='no greater than'):
+    validate_manifest(manifest, allow_private_fields=True)
+
+
+def test_signed_download_url_endpoint_rate_limits_per_client(csrf_client):
+  for _ in range(main.app.config['SIGNED_URL_RATE_LIMIT']):
+    response = csrf_client.post(
+        '/api/on-device-models/gemma-web-default/download-url',
+        json={'version': '2026-08-01'},
+    )
+    assert response.status_code == 200
+
+  limited = csrf_client.post(
+      '/api/on-device-models/gemma-web-default/download-url',
+      json={'version': '2026-08-01'},
+  )
+  assert limited.status_code == 429
+  assert limited.get_json()['error'] == 'RATE_LIMITED'
+  assert int(limited.headers['Retry-After']) > 0
+  assert limited.headers['Cache-Control'] == 'no-store'
 
 
 def test_default_gcs_signer_pins_generation(monkeypatch):

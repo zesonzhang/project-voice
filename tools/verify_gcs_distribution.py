@@ -53,6 +53,7 @@ REQUIRED_CORS_EXPOSED_HEADERS = {
 }
 
 REQUIRED_CORS_METHODS = {'GET', 'HEAD'}
+ALLOWED_RUNTIME_BUCKET_ROLES = {'roles/storage.objectViewer'}
 
 
 class GcsVerificationError(Exception):
@@ -60,15 +61,45 @@ class GcsVerificationError(Exception):
   pass
 
 
+def _is_safe_cors_origin(origin: Any) -> bool:
+  """Returns whether a CORS value is an explicit HTTPS or localhost origin."""
+  if not isinstance(origin, str) or '*' in origin:
+    return False
+  try:
+    parsed = urllib.parse.urlparse(origin)
+    port = parsed.port
+  except ValueError:
+    return False
+  if (not parsed.hostname or parsed.username or parsed.password or
+      parsed.path or parsed.params or parsed.query or parsed.fragment):
+    return False
+  if parsed.scheme == 'https':
+    return True
+  return parsed.scheme == 'http' and parsed.hostname == 'localhost' and (
+      port is None or 1 <= port <= 65535)
+
+
 def validate_cors_policy(
-    cors_rules: List[Dict[str, Any]]) -> Tuple[bool, List[str]]:
+    cors_rules: List[Dict[str, Any]],
+    allowed_origins: Optional[List[str]] = None) -> Tuple[bool, List[str]]:
   """Validates that GCS CORS rules support browser Range downloads."""
   issues = []
   if not cors_rules:
     return False, ['No CORS rules configured on bucket']
 
   has_valid_rule = False
+  found_origins = set()
   for idx, rule in enumerate(cors_rules):
+    origins = rule.get('origin', [])
+    if not isinstance(origins, list) or not origins:
+      issues.append(f'Rule {idx} has no origins')
+      continue
+    for origin in origins:
+      if not _is_safe_cors_origin(origin):
+        issues.append(f'Rule {idx} has unsafe origin: {origin}')
+    found_origins.update(
+        origin for origin in origins if isinstance(origin, str))
+
     methods = {m.upper() for m in rule.get('method', [])}
     if not REQUIRED_CORS_METHODS.issubset(methods):
       missing = sorted(REQUIRED_CORS_METHODS - methods)
@@ -85,11 +116,17 @@ def validate_cors_policy(
 
     has_valid_rule = True
 
-  return has_valid_rule, issues
+  if allowed_origins is not None and found_origins != set(allowed_origins):
+    issues.append(
+        'Configured CORS origins do not exactly match ON_DEVICE_ALLOWED_ORIGINS'
+    )
+
+  return has_valid_rule and not issues, issues
 
 
 def validate_bucket_security(
-    bucket_metadata: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    bucket_metadata: Dict[str, Any],
+    expected_runtime_member: Optional[str] = None) -> Tuple[bool, List[str]]:
   """Validates private bucket policy and uniform access."""
   issues = []
 
@@ -106,12 +143,28 @@ def validate_bucket_security(
     if entity in ('allusers', 'allauthenticatedusers'):
       issues.append(f'Public entity "{entity}" found in defaultObjectAcl')
 
+  runtime_roles = set()
   for binding in bucket_metadata.get('iamBindings', []):
+    role = binding.get('role', 'unknown role')
     for member in binding.get('members', []):
       if str(member).lower() in ('allusers', 'allauthenticatedusers'):
-        issues.append(
-            f'Public IAM member "{member}" found in {binding.get("role", "unknown role")}'
-        )
+        issues.append(f'Public IAM member "{member}" found in {role}')
+      if expected_runtime_member and member == expected_runtime_member:
+        runtime_roles.add(role)
+
+  if expected_runtime_member:
+    if not runtime_roles:
+      issues.append(
+          f'Runtime identity "{expected_runtime_member}" has no bucket role')
+    excessive_roles = runtime_roles - ALLOWED_RUNTIME_BUCKET_ROLES
+    if excessive_roles:
+      issues.append(
+          f'Runtime identity has excessive bucket roles: {sorted(excessive_roles)}'
+      )
+    if 'roles/storage.objectViewer' not in runtime_roles:
+      issues.append(
+          'Runtime identity requires roles/storage.objectViewer on the model bucket'
+      )
 
   return len(issues) == 0, issues
 
@@ -196,13 +249,29 @@ def verify_live_distribution(config_path: Optional[str] = None) -> None:
       },
       'iamBindings': _policy_bindings(policy),
   }
-  security_ok, security_issues = validate_bucket_security(bucket_metadata)
+  runtime_member = os.environ.get('MODEL_SIGNER_IAM_MEMBER')
+  if not runtime_member:
+    raise GcsVerificationError(
+        'Live verification requires MODEL_SIGNER_IAM_MEMBER, for example '
+        'serviceAccount:project-voice@appspot.gserviceaccount.com')
+  security_ok, security_issues = validate_bucket_security(
+      bucket_metadata, expected_runtime_member=runtime_member)
   if not security_ok:
     raise GcsVerificationError(
         f'Bucket security verification failed: {security_issues}')
 
+  allowed_origins_value = os.environ.get('ON_DEVICE_ALLOWED_ORIGINS')
+  if not allowed_origins_value:
+    raise GcsVerificationError(
+        'Live verification requires comma-separated ON_DEVICE_ALLOWED_ORIGINS')
+  allowed_origins = [
+      origin.strip()
+      for origin in allowed_origins_value.split(',')
+      if origin.strip()
+  ]
   cors_rules = bucket.cors or []
-  cors_ok, cors_issues = validate_cors_policy(cors_rules)
+  cors_ok, cors_issues = validate_cors_policy(
+      cors_rules, allowed_origins=allowed_origins)
   if not cors_ok:
     raise GcsVerificationError(
         f'Bucket CORS verification failed: {cors_issues}')
@@ -346,7 +415,7 @@ def main():
 
   # 1. Standard reference CORS policy verification
   reference_cors = [{
-      'origin': ['http://localhost:5000', 'https://*.appspot.com'],
+      'origin': ['http://localhost:5000', 'https://voice.example.com'],
       'method': ['GET', 'HEAD'],
       'responseHeader': [
           'Range',

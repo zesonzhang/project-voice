@@ -54,7 +54,8 @@ def test_m0_worker_is_cross_origin_isolated():
   main.app.config['ENABLE_M0_HARNESS'] = True
   try:
     with main.app.test_request_context('/static/m0-inference-worker.js'):
-      response = main.AddM0IsolationHeaders(flask.Response())
+      flask.g.request_id = 'test-request'
+      response = main.AddSecurityHeaders(flask.Response())
   finally:
     main.app.config['ENABLE_M0_HARNESS'] = previous
 
@@ -67,8 +68,65 @@ def test_m0_wasm_binary_is_cross_origin_isolated():
   main.app.config['ENABLE_M0_HARNESS'] = True
   try:
     with main.app.test_request_context('/static/litertlm_wasm_internal.wasm'):
-      response = main.AddM0IsolationHeaders(flask.Response())
+      flask.g.request_id = 'test-request'
+      response = main.AddSecurityHeaders(flask.Response())
   finally:
     main.app.config['ENABLE_M0_HARNESS'] = previous
 
   assert response.headers['Cross-Origin-Embedder-Policy'] == 'require-corp'
+
+
+@pytest.mark.parametrize('path, expected_status', [
+    ('/', 200),
+    ('/does-not-exist', 404),
+    ('/static/index.css', 200),
+])
+def test_all_flask_response_paths_have_isolation_and_security_headers(
+    path, expected_status):
+  response = main.app.test_client().get(path)
+
+  assert response.status_code == expected_status
+  assert response.headers['Cross-Origin-Opener-Policy'] == 'same-origin'
+  assert response.headers['Cross-Origin-Embedder-Policy'] == 'require-corp'
+  assert response.headers['Cross-Origin-Resource-Policy'] == 'same-origin'
+  assert response.headers['X-Content-Type-Options'] == 'nosniff'
+  assert response.headers['Referrer-Policy'] == 'no-referrer'
+  assert response.headers['X-Request-ID']
+
+
+def test_csp_restricts_executable_resources_and_allows_required_connections():
+  response = main.app.test_client().get('/')
+  csp = response.headers['Content-Security-Policy']
+
+  assert "script-src 'self'" in csp
+  assert "worker-src 'self'" in csp
+  assert "connect-src 'self' https://storage.googleapis.com" in csp
+  assert "object-src 'none'" in csp
+  assert "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com" in csp
+  assert "font-src 'self' https://fonts.gstatic.com" in csp
+  assert response.headers['Cache-Control'] == 'no-store'
+
+
+def test_runtime_assets_are_self_hosted_and_present():
+  response = main.app.test_client().get('/')
+
+  assert b'https://fonts.googleapis.com' in response.data
+  assert b'https://fonts.gstatic.com' in response.data
+  assert b'crossorigin="anonymous"' in response.data
+  for path in (
+      '/static/inference-worker.js',
+      '/static/vendor/litert-lm/wasm/litertlm_wasm_internal.wasm',
+  ):
+    asset = main.app.test_client().get(path)
+    assert asset.status_code == 200, path
+
+
+def test_app_engine_static_handler_declares_isolation_and_csp():
+  with open('app.yaml', encoding='utf-8') as app_config:
+    yaml_text = app_config.read()
+
+  static_handler = yaml_text.split('- url: /*', maxsplit=1)[0]
+  assert 'Cross-Origin-Opener-Policy: same-origin' in static_handler
+  assert 'Cross-Origin-Embedder-Policy: require-corp' in static_handler
+  assert 'Content-Security-Policy:' in static_handler
+  assert "worker-src 'self'" in static_handler

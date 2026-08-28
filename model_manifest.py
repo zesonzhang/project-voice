@@ -28,6 +28,8 @@ MODEL_ID_REGEX = re.compile(r'^[a-z0-9\-]+$')
 VERSION_REGEX = re.compile(r'^[a-z0-9.\-]+$')
 SHA256_REGEX = re.compile(r'^[a-f0-9]{64}$')
 GCS_GENERATION_REGEX = re.compile(r'^[0-9]+$')
+GCS_BUCKET_REGEX = re.compile(r'^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$')
+CONTROL_CHARACTER_REGEX = re.compile(r'[\x00-\x1f\x7f]')
 
 PUBLIC_TOP_LEVEL_KEYS = {
     'schemaVersion',
@@ -111,18 +113,22 @@ def validate_manifest(raw: Dict[str, Any],
 
   # 2. modelId
   model_id = raw.get('modelId')
-  if not isinstance(model_id, str) or not MODEL_ID_REGEX.match(model_id):
+  if (not isinstance(model_id, str) or len(model_id) > 64 or
+      not MODEL_ID_REGEX.fullmatch(model_id)):
     raise ManifestValidationError(f'Invalid modelId: {model_id}')
 
   # 3. version
   version = raw.get('version')
-  if not isinstance(version, str) or not VERSION_REGEX.match(version):
+  if (not isinstance(version, str) or len(version) > 64 or
+      not VERSION_REGEX.fullmatch(version)):
     raise ManifestValidationError(f'Invalid version: {version}')
 
   # 4. displayName
   display_name = raw.get('displayName')
-  if not isinstance(display_name, str) or not display_name.strip():
-    raise ManifestValidationError('displayName must be a non-empty string')
+  if (not isinstance(display_name, str) or not display_name.strip() or
+      len(display_name) > 128 or CONTROL_CHARACTER_REGEX.search(display_name)):
+    raise ManifestValidationError(
+        'displayName must be a non-empty safe string of at most 128 characters')
 
   # 5. family
   family = raw.get('family')
@@ -152,14 +158,14 @@ def validate_manifest(raw: Dict[str, Any],
   if not isinstance(sha256, str):
     raise ManifestValidationError('sha256 must be a string')
   sha256_lower = sha256.lower()
-  if not SHA256_REGEX.match(sha256_lower):
+  if not SHA256_REGEX.fullmatch(sha256_lower):
     raise ManifestValidationError(
         f'sha256 must be a 64-character hex digest: {sha256}')
 
   # 10. gcsGeneration
   gcs_generation = raw.get('gcsGeneration')
-  if not isinstance(gcs_generation,
-                    str) or not GCS_GENERATION_REGEX.match(gcs_generation):
+  if not isinstance(gcs_generation, str) or not GCS_GENERATION_REGEX.fullmatch(
+      gcs_generation) or int(gcs_generation) <= 0:
     raise ManifestValidationError(
         f'gcsGeneration must be a non-empty numeric string: {gcs_generation}')
 
@@ -177,14 +183,19 @@ def validate_manifest(raw: Dict[str, Any],
     if not isinstance(lang, str) or lang not in ALLOWED_LANGUAGES:
       raise ManifestValidationError(
           f'capabilities.languages contains unsupported language: {lang}')
+  if len(languages) != len(set(languages)):
+    raise ManifestValidationError(
+        'capabilities.languages must not contain duplicates')
   max_input_tokens = capabilities.get('maxInputTokens')
-  if type(max_input_tokens) is not int or max_input_tokens <= 0:
+  if (type(max_input_tokens) is not int or max_input_tokens <= 0 or
+      max_input_tokens > 32768):
     raise ManifestValidationError(
-        'capabilities.maxInputTokens must be a positive integer')
+        'capabilities.maxInputTokens must be between 1 and 32768')
   max_output_tokens = capabilities.get('maxOutputTokens')
-  if type(max_output_tokens) is not int or max_output_tokens <= 0:
+  if (type(max_output_tokens) is not int or max_output_tokens <= 0 or
+      max_output_tokens > 4096):
     raise ManifestValidationError(
-        'capabilities.maxOutputTokens must be a positive integer')
+        'capabilities.maxOutputTokens must be between 1 and 4096')
 
   # 12. requirements
   requirements = raw.get('requirements')
@@ -197,8 +208,12 @@ def validate_manifest(raw: Dict[str, Any],
       not math.isfinite(min_ram) or min_ram <= 0):
     raise ManifestValidationError(
         'requirements.minimumDeviceMemoryGB must be positive')
+  if min_ram > 1024:
+    raise ManifestValidationError(
+        'requirements.minimumDeviceMemoryGB exceeds the supported bound')
   min_storage = requirements.get('minimumFreeStorageBytes')
-  if type(min_storage) is not int or min_storage < size_bytes:
+  if (type(min_storage) is not int or min_storage < size_bytes or
+      min_storage > 100_000_000_000):
     raise ManifestValidationError(
         f'requirements.minimumFreeStorageBytes ({min_storage}) must be >= sizeBytes ({size_bytes})'
     )
@@ -217,20 +232,30 @@ def validate_manifest(raw: Dict[str, Any],
       not math.isfinite(top_p) or top_p < 0.0 or top_p > 1.0):
     raise ManifestValidationError('generation.topP must be between 0.0 and 1.0')
   gen_max_output = generation.get('maxOutputTokens')
-  if type(gen_max_output) is not int or gen_max_output <= 0:
+  if (type(gen_max_output) is not int or gen_max_output <= 0 or
+      gen_max_output > max_output_tokens):
     raise ManifestValidationError(
-        'generation.maxOutputTokens must be a positive integer')
+        'generation.maxOutputTokens must be positive and no greater than '
+        'capabilities.maxOutputTokens')
 
   # Private fields validation if allowed
   if allow_private_fields:
     gcs_bucket = raw.get('gcsBucket')
-    if gcs_bucket is not None and (not isinstance(gcs_bucket, str) or
-                                   not gcs_bucket.strip()):
-      raise ManifestValidationError('gcsBucket must be a non-empty string')
+    if (gcs_bucket is not None and
+        (not isinstance(gcs_bucket, str) or
+         not GCS_BUCKET_REGEX.fullmatch(gcs_bucket))):
+      raise ManifestValidationError('gcsBucket is not a valid bucket name')
     gcs_object = raw.get('gcsObject')
-    if gcs_object is not None and (not isinstance(gcs_object, str) or
-                                   not gcs_object.strip()):
-      raise ManifestValidationError('gcsObject must be a non-empty string')
+    if gcs_object is not None:
+      invalid_object = (
+          not isinstance(gcs_object, str) or not gcs_object or
+          len(gcs_object) > 1024 or gcs_object.startswith('/') or
+          '\\' in gcs_object or CONTROL_CHARACTER_REGEX.search(gcs_object) or
+          any(part in ('.', '..') for part in gcs_object.split('/')) or
+          not gcs_object.endswith('.litertlm'))
+      if invalid_object:
+        raise ManifestValidationError(
+            'gcsObject must be a safe relative .litertlm object name')
 
   validated = copy.deepcopy(raw)
   validated['sha256'] = sha256_lower

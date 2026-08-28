@@ -14,7 +14,7 @@
 | **M1** | Provider & Prompt Foundation (Router, bundled Jinja, parity tests) | **COMPLETE** | 100% (11/11) | [`docs/m1/`](./m1/) (Audited, 210 golden fixtures) |
 | **M2** | Model Catalog, Download, Storage & Lifecycle | **CONDITIONAL** | 15/16 locally verified | [`docs/m2/`](./m2/) (Live GCS deployment verification pending) |
 | **M3** | Production Runtime & Settings UX | **COMPLETE** | 100% (12/12) | [`docs/m3/`](./m3/) |
-| **M4** | Hardening, Cross-Platform Validation & Launch | **Pending** | Queued (0/13) | [`docs/on-device-llm-design.md#147-m4--hardening-validation-and-rollout-readiness`](./on-device-llm-design.md) |
+| **M4** | Hardening, Cross-Platform Validation & Launch | **In progress** | 4/13 complete | [`docs/m4/README.md`](./m4/README.md) |
 
 
 ## 1. Purpose of This Handoff
@@ -188,7 +188,7 @@ Official reference:
 - WebGPU must be feature-detected; browser name alone is insufficient because GPU, OS, driver, and policy can disable it.
 - A dedicated Web Worker is the recommended owner of model loading, hashing, generation, cancellation, and metrics.
 - `COOP: same-origin` and `COEP: require-corp` are required for cross-origin isolation and page-level memory measurement.
-- Current external Google Fonts and Material Symbols should be self-hosted to avoid cross-origin-isolation issues.
+- Current external Google Fonts and Material Symbols self-hosting is deferred to future improvements; currently loaded via Google Fonts CDN with `crossorigin="anonymous"`.
 
 Official references:
 
@@ -317,7 +317,7 @@ The endpoint must:
 | **M1** | **Provider & Prompt Foundation**: Provider router with strict no-fallback; bundled Jinja browser renderer with Python parity; `MockLocalSuggestionProvider` CI seam; privacy regression tests. | P0 | **COMPLETE**<br/>(Accepted) | 100%<br/>(11/11 tasks) | **2026-08-27** — Audited in [`docs/m1/audit.md`](./m1/audit.md). 10 templates / 21 fixtures verified by `npm run verify:m1-prompts`. 0 fetch calls in Local mode. Ref: [`docs/m1/`](./m1/) |
 | **M2** | **Model Catalog, Download, Storage & Lifecycle**: Backend manifest & signed URL APIs; private GCS CORS; OPFS/IndexedDB manager; Range resume; streaming SHA-256; atomic rollback. | P0 | **CONDITIONAL**<br/>(Not accepted) | 15/16 locally verified; external deployment gate remains | **2026-08-28** — Re-audited in [`docs/m2/audit.md`](./m2/audit.md). A recorded live GCS/IAM/CORS/Range verification is still required. |
 | **M3** | **Production Runtime & Settings UX**: LiteRT-LM adapter; Worker protocol; real `LocalSuggestionProvider` inference; Settings UI model card & actions; telemetry; debug import; accessibility. | P0 | **COMPLETE** | 100%<br/>(12/12 tasks) | Audited in [`docs/m3/audit.md`](./m3/audit.md); 223 browser specs and 61 backend tests pass. |
-| **M4** | **Hardening, Cross-Platform Validation & Launch**: COOP/COEP; self-hosted assets; CSP; security review; Windows/Linux validation (M4.6); 30-min soak test; feature flags; runbooks. | P0 | **Pending** | 0%<br/>(0/13 tasks) | Designed in [`docs/on-device-llm-design.md`](./on-device-llm-design.md) Section 14.7. General-availability release gates. |
+| **M4** | **Hardening, Cross-Platform Validation & Launch**: COOP/COEP; self-hosted assets; CSP; security review; Windows/Linux validation (M4.6); 30-min soak test; feature flags; runbooks. | P0 | **IN PROGRESS** | 31%<br/>(4/13 tasks) | M4.1–M4.4 completed and audited in [`docs/m4/`](./m4/README.md). Remaining general-availability release gates start at M4.5. |
 
 ---
 
@@ -440,10 +440,10 @@ The endpoint must:
 
 | Task ID | Task Description | Category | Priority | Effort | Status | Deliverables & Completion Condition |
 |---|---|---|:---:|:---:|:---:|---|
-| **M4.1** | Enable COOP/COEP on all application responses | Hosting / security | P0 | M | **Pending** | Add `COOP: same-origin` & `COEP: require-corp` on Flask & App Engine static handlers; verify isolation. |
-| **M4.2** | Self-host fonts, icons, runtime, Wasm, Worker assets | Build / hosting | P0 | M | **Pending** | Bundle Google Fonts, Material Symbols, LiteRT Wasm locally; 0 external runtime CDNs. |
-| **M4.3** | Add and validate Content Security Policy (CSP) | Security | P0 | M | **Pending** | Strict CSP restricting scripts/Workers to self, allow only GCS model bucket connections. |
-| **M4.4** | Complete backend, IAM, and signed-URL security review | Security / backend | P0 | M | **Pending** | Least privilege IAM audit, CSRF verification, rate limiting, generation check audit. |
+| **M4.1** | Enable COOP/COEP on all application responses | Hosting / security | P0 | M | **COMPLETE** | Global Flask and App Engine static headers; root/error/static/Worker/Wasm coverage. |
+| **M4.2** | Self-host runtime, Wasm, and Worker assets (font self-hosting deferred) | Build / hosting | P0 | M | **COMPLETE (Runtime) / Deferred (Fonts)** | LiteRT Worker/Wasm and audio same-origin; font self-hosting deferred to future improvements to avoid repo bloat; Google Fonts loaded with `crossorigin="anonymous"`. |
+| **M4.3** | Add and validate Content Security Policy (CSP) | Security | P0 | M | **COMPLETE** | Scripts/Workers restricted to self; Google Fonts and GCS external connection/style origins scoped; executable manifests rejected. |
+| **M4.4** | Complete backend, IAM, and signed-URL security review | Security / backend | P0 | M | **COMPLETE** | Session+CSRF, rate limiting, generation pinning, URL redaction/no-store, least-privilege IAM and exact-origin CORS live gate. Audit: [`docs/m4/audit.md`](./m4/audit.md). |
 | **M4.5** | Run end-to-end privacy and network tests | Privacy / QA | P0 | M | **Pending** | Wire-level packet/fetch capture confirming 0 bytes sent to Gemini/backend during Local mode. |
 | **M4.6** | Complete desktop Chrome compatibility matrix | QA / compatibility | P0 | L | **Pending** | Validate on macOS (Apple Silicon/Intel), Windows 11 (NVIDIA/Intel/AMD), Linux (Mesa/Vulkan). |
 | **M4.7** | Run performance, memory, and soak validation | Performance / QA | P0 | L | **Pending** | Measure latency SLOs (2s first-word, 5s complete), 30min continuous typing memory leak test. |

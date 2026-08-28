@@ -66,6 +66,13 @@ const VERSION_REGEX = /^[a-z0-9.-]+$/;
 const SHA256_REGEX = /^[a-f0-9]{64}$/;
 const GCS_GENERATION_REGEX = /^[0-9]+$/;
 
+function containsControlCharacter(value: string): boolean {
+  return [...value].some(character => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 31 || codePoint === 127;
+  });
+}
+
 const ALLOWED_TOP_LEVEL_KEYS = new Set([
   'schemaVersion',
   'modelId',
@@ -154,6 +161,7 @@ export function validateModelManifest(raw: unknown): ModelManifest {
   // 2. modelId
   if (
     typeof record.modelId !== 'string' ||
+    record.modelId.length > 64 ||
     !MODEL_ID_REGEX.test(record.modelId)
   ) {
     throw new ManifestValidationError(`Invalid modelId: ${record.modelId}`);
@@ -162,6 +170,7 @@ export function validateModelManifest(raw: unknown): ModelManifest {
   // 3. version
   if (
     typeof record.version !== 'string' ||
+    record.version.length > 64 ||
     !VERSION_REGEX.test(record.version)
   ) {
     throw new ManifestValidationError(`Invalid version: ${record.version}`);
@@ -170,9 +179,13 @@ export function validateModelManifest(raw: unknown): ModelManifest {
   // 4. displayName
   if (
     typeof record.displayName !== 'string' ||
-    record.displayName.trim() === ''
+    record.displayName.trim() === '' ||
+    record.displayName.length > 128 ||
+    containsControlCharacter(record.displayName)
   ) {
-    throw new ManifestValidationError('displayName must be a non-empty string');
+    throw new ManifestValidationError(
+      'displayName must be a non-empty safe string of at most 128 characters',
+    );
   }
 
   // 5. family
@@ -231,7 +244,8 @@ export function validateModelManifest(raw: unknown): ModelManifest {
   // 10. gcsGeneration
   if (
     typeof record.gcsGeneration !== 'string' ||
-    !GCS_GENERATION_REGEX.test(record.gcsGeneration)
+    !GCS_GENERATION_REGEX.test(record.gcsGeneration) ||
+    /^0+$/.test(record.gcsGeneration)
   ) {
     throw new ManifestValidationError(
       `gcsGeneration must be a non-empty numeric string: ${record.gcsGeneration}`,
@@ -261,22 +275,29 @@ export function validateModelManifest(raw: unknown): ModelManifest {
       );
     }
   }
+  if (new Set(cap.languages).size !== cap.languages.length) {
+    throw new ManifestValidationError(
+      'capabilities.languages must not contain duplicates',
+    );
+  }
   if (
     typeof cap.maxInputTokens !== 'number' ||
     !Number.isInteger(cap.maxInputTokens) ||
-    cap.maxInputTokens <= 0
+    cap.maxInputTokens <= 0 ||
+    cap.maxInputTokens > 32768
   ) {
     throw new ManifestValidationError(
-      'capabilities.maxInputTokens must be a positive integer',
+      'capabilities.maxInputTokens must be between 1 and 32768',
     );
   }
   if (
     typeof cap.maxOutputTokens !== 'number' ||
     !Number.isInteger(cap.maxOutputTokens) ||
-    cap.maxOutputTokens <= 0
+    cap.maxOutputTokens <= 0 ||
+    cap.maxOutputTokens > 4096
   ) {
     throw new ManifestValidationError(
-      'capabilities.maxOutputTokens must be a positive integer',
+      'capabilities.maxOutputTokens must be between 1 and 4096',
     );
   }
 
@@ -292,16 +313,18 @@ export function validateModelManifest(raw: unknown): ModelManifest {
   if (
     typeof req.minimumDeviceMemoryGB !== 'number' ||
     !Number.isFinite(req.minimumDeviceMemoryGB) ||
-    req.minimumDeviceMemoryGB <= 0
+    req.minimumDeviceMemoryGB <= 0 ||
+    req.minimumDeviceMemoryGB > 1024
   ) {
     throw new ManifestValidationError(
-      'requirements.minimumDeviceMemoryGB must be a positive number',
+      'requirements.minimumDeviceMemoryGB must be between 0 and 1024',
     );
   }
   if (
     typeof req.minimumFreeStorageBytes !== 'number' ||
     !Number.isInteger(req.minimumFreeStorageBytes) ||
-    req.minimumFreeStorageBytes < record.sizeBytes
+    req.minimumFreeStorageBytes < record.sizeBytes ||
+    req.minimumFreeStorageBytes > 100_000_000_000
   ) {
     throw new ManifestValidationError(
       `requirements.minimumFreeStorageBytes (${req.minimumFreeStorageBytes}) must be >= sizeBytes (${record.sizeBytes})`,
@@ -337,10 +360,11 @@ export function validateModelManifest(raw: unknown): ModelManifest {
   if (
     typeof gen.maxOutputTokens !== 'number' ||
     !Number.isInteger(gen.maxOutputTokens) ||
-    gen.maxOutputTokens <= 0
+    gen.maxOutputTokens <= 0 ||
+    gen.maxOutputTokens > cap.maxOutputTokens
   ) {
     throw new ManifestValidationError(
-      'generation.maxOutputTokens must be a positive integer',
+      'generation.maxOutputTokens must be positive and no greater than capabilities.maxOutputTokens',
     );
   }
 

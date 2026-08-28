@@ -16,6 +16,8 @@
 import os
 import sys
 
+import pytest
+
 # Ensure tools directory is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
 
@@ -29,7 +31,7 @@ from verify_gcs_distribution import (
 
 def test_cors_policy_valid_configuration():
   valid_cors = [{
-      'origin': ['http://localhost:5000', 'https://*.appspot.com'],
+      'origin': ['http://localhost:5000', 'https://voice.example.com'],
       'method': ['GET', 'HEAD'],
       'responseHeader': [
           'Range',
@@ -44,6 +46,52 @@ def test_cors_policy_valid_configuration():
   ok, issues = validate_cors_policy(valid_cors)
   assert ok is True
   assert not issues
+
+
+def test_cors_policy_rejects_wildcards_and_unapproved_origins():
+  wildcard_cors = [{
+      'origin': ['*'],
+      'method': ['GET', 'HEAD'],
+      'responseHeader':
+          list({
+              'Range', 'Content-Range', 'Content-Length', 'ETag',
+              'Accept-Ranges', 'x-goog-generation'
+          }),
+  }]
+  ok, issues = validate_cors_policy(wildcard_cors)
+  assert ok is False
+  assert any('unsafe origin' in issue for issue in issues)
+
+  explicit_cors = [{
+      **wildcard_cors[0],
+      'origin': ['https://voice.example.com'],
+  }]
+  ok, issues = validate_cors_policy(
+      explicit_cors, allowed_origins=['https://staging.example.com'])
+  assert ok is False
+  assert any('do not exactly match' in issue for issue in issues)
+
+
+@pytest.mark.parametrize('origin', [
+    'https://voice.example.com/path',
+    'https://user@voice.example.com',
+    'https://voice.example.com?redirect=evil',
+    'http://voice.example.com',
+    'http://localhost.evil.example',
+    'https://voice.example.com\nhttps://evil.example',
+])
+def test_cors_policy_rejects_values_that_are_not_exact_origins(origin):
+  cors = [{
+      'origin': [origin],
+      'method': ['GET', 'HEAD'],
+      'responseHeader': [
+          'Range', 'Content-Range', 'Content-Length', 'ETag', 'Accept-Ranges',
+          'x-goog-generation'
+      ],
+  }]
+  ok, issues = validate_cors_policy(cors)
+  assert ok is False
+  assert any('unsafe origin' in issue for issue in issues)
 
 
 def test_cors_policy_rejects_missing_exposed_headers():
@@ -103,6 +151,32 @@ def test_bucket_security_rejects_public_iam_binding():
   ok, issues = validate_bucket_security(public_bucket)
   assert ok is False
   assert any('Public IAM member' in issue for issue in issues)
+
+
+def test_bucket_security_enforces_runtime_identity_least_privilege():
+  runtime_member = 'serviceAccount:voice@appspot.gserviceaccount.com'
+  bucket = {
+      'iamConfiguration': {
+          'uniformBucketLevelAccess': {
+              'enabled': True
+          }
+      },
+      'iamBindings': [{
+          'role': 'roles/storage.objectViewer',
+          'members': [runtime_member],
+      }],
+  }
+  ok, issues = validate_bucket_security(bucket, runtime_member)
+  assert ok is True
+  assert not issues
+
+  bucket['iamBindings'].append({
+      'role': 'roles/storage.admin',
+      'members': [runtime_member],
+  })
+  ok, issues = validate_bucket_security(bucket, runtime_member)
+  assert ok is False
+  assert any('excessive bucket roles' in issue for issue in issues)
 
 
 def test_generation_pinning_validation():

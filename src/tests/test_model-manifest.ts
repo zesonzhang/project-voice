@@ -189,4 +189,45 @@ describe('ModelManifest Schema Validation', () => {
       /temperature/,
     );
   });
+
+  it('rejects control characters and excessive generation bounds', () => {
+    const forgedDisplayName = {
+      ...validRawManifest,
+      displayName: 'safe\nforged-log-entry',
+    };
+    expect(() => validateModelManifest(forgedDisplayName)).toThrowError(
+      ManifestValidationError,
+      /displayName/,
+    );
+
+    const excessiveGeneration = {
+      ...validRawManifest,
+      generation: {
+        ...validRawManifest.generation,
+        maxOutputTokens: validRawManifest.capabilities.maxOutputTokens + 1,
+      },
+    };
+    expect(() => validateModelManifest(excessiveGeneration)).toThrowError(
+      ManifestValidationError,
+      /no greater than/,
+    );
+  });
+
+  it('rejects duplicate languages and a zero object generation', () => {
+    const duplicateLanguage = {
+      ...validRawManifest,
+      capabilities: {
+        ...validRawManifest.capabilities,
+        languages: ['en', 'en'],
+      },
+    };
+    expect(() => validateModelManifest(duplicateLanguage)).toThrowError(
+      ManifestValidationError,
+      /must not contain duplicates/,
+    );
+
+    expect(() =>
+      validateModelManifest({...validRawManifest, gcsGeneration: '0'}),
+    ).toThrowError(ManifestValidationError, /gcsGeneration/);
+  });
 });
