@@ -35,6 +35,10 @@ import {customElement, property, query, state} from 'lit/decorators.js';
 
 import {LANGUAGES} from './language.js';
 import {
+  downloadDiagnosticsReport,
+  exportPrivacySafeDiagnostics,
+} from './on-device/diagnostics-exporter.js';
+import {
   DownloadProgress,
   ModelErrorCode,
   ModelLifecycleState,
@@ -550,6 +554,16 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     this.removeTrigger = null;
   }
 
+  private async onExportDiagnosticsClick(): Promise<void> {
+    if (!this.modelManager) return;
+    try {
+      const report = await exportPrivacySafeDiagnostics(this.modelManager);
+      downloadDiagnosticsReport(report);
+    } catch (err) {
+      console.error('Failed to export diagnostics:', err);
+    }
+  }
+
   private async onInferenceModeChange(mode: 'cloud' | 'local'): Promise<void> {
     // Persist first so Cloud requests stop immediately, even if local startup
     // subsequently reports that a model must be downloaded or reloaded.
@@ -667,11 +681,13 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
                 aria-valuenow="${this.downloadProgress.percentage}"
                 aria-valuemin="0"
                 aria-valuemax="100"
+                aria-label="${msg('Model download progress')}"
               >
                 <md-linear-progress
                   value="${this.downloadProgress.percentage / 100}"
+                  aria-label="${msg('Model download progress')}"
                 ></md-linear-progress>
-                <div class="progress-text">
+                <div class="progress-text" role="status" aria-live="polite">
                   <span
                     >${this.formatBytes(this.downloadProgress.bytesDownloaded)}
                     / ${this.formatBytes(this.downloadProgress.totalBytes)}
@@ -687,6 +703,8 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
         ${this.updateCheckMessage
           ? html`<div
               class="progress-text"
+              role="status"
+              aria-live="polite"
               style="color: var(--md-sys-color-primary, #0b57d0)"
             >
               ${this.updateCheckMessage}
@@ -857,6 +875,16 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
                   ? `${metrics.tokensPerSecond.toFixed(1)} tok/s`
                   : msg('N/A')}</span
               >
+            </div>
+            <div
+              style="margin-top: 12px; display: flex; justify-content: flex-end;"
+            >
+              <md-text-button
+                @click=${this.onExportDiagnosticsClick}
+                aria-label="${msg('Export privacy-safe diagnostics report')}"
+              >
+                ${msg('Export Diagnostics (JSON)')}
+              </md-text-button>
             </div>
           </div>
         </details>
@@ -1160,9 +1188,14 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
         id="remove-confirm-dialog"
         ?open=${this.showRemoveConfirm}
         @closed=${this.onRemoveDialogClosed}
+        role="alertdialog"
+        aria-labelledby="remove-confirm-headline"
+        aria-describedby="remove-confirm-content"
       >
-        <div slot="headline">${msg('Remove Local Model?')}</div>
-        <div slot="content">
+        <div slot="headline" id="remove-confirm-headline">
+          ${msg('Remove Local Model?')}
+        </div>
+        <div slot="content" id="remove-confirm-content">
           ${msg(
             'This will delete the model weights from local storage (~2 GB). You will need to download the model again to use on-device suggestions.',
           )}

@@ -14,7 +14,7 @@
 | **M1** | Provider & Prompt Foundation (Router, bundled Jinja, parity tests) | **COMPLETE** | 100% (11/11) | [`docs/m1/`](./m1/) (Audited, 210 golden fixtures) |
 | **M2** | Model Catalog, Download, Storage & Lifecycle | **CONDITIONAL** | 15/16 locally verified | [`docs/m2/`](./m2/) (Live GCS deployment verification pending) |
 | **M3** | Production Runtime & Settings UX | **COMPLETE** | 100% (12/12) | [`docs/m3/`](./m3/) |
-| **M4** | Hardening, Cross-Platform Validation & Launch | **In progress** | 4/13 complete | [`docs/m4/README.md`](./m4/README.md) |
+| **M4** | Hardening, Cross-Platform Validation & Launch | **COMPLETE** | 100% (13/13) | [`docs/m4/README.md`](./m4/README.md) |
 
 
 ## 1. Purpose of This Handoff

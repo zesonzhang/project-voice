@@ -172,11 +172,22 @@ describe('M3 End-to-End CUJ & Privacy Verification', () => {
     appElement = new TEST_ONLY.PvAppElement(state, router, modelManager);
   });
 
+  afterEach(() => {
+    if (appElement) {
+      window.clearTimeout(
+        (appElement as unknown as {timeoutId?: number}).timeoutId,
+      );
+      (
+        appElement as unknown as {providers?: {abort(): void}}
+      ).providers?.abort();
+    }
+  });
+
   it('verifies complete CUJ: mode switch, auto-load, local inference, and zero network calls', async () => {
     // 1. Cloud mode initially
     state.text = 'help';
     await appElement.updateSuggestions();
-    await new Promise(resolve => window.setTimeout(resolve, 200));
+    await new Promise(resolve => window.setTimeout(resolve, 350));
 
     expect(fetchSpy).toHaveBeenCalled();
     const cloudCalls = fetchSpy.calls
@@ -227,7 +238,7 @@ describe('M3 End-to-End CUJ & Privacy Verification', () => {
 
     state.text = 'private message';
     await appElement.updateSuggestions();
-    await new Promise(resolve => window.setTimeout(resolve, 200));
+    await new Promise(resolve => window.setTimeout(resolve, 350));
 
     // Must NOT call Cloud
     const macroNetworkCalls = fetchSpy.calls

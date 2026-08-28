@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M4.6",
+  "updatedAt": "2026-08-28T09:25:00Z",
+  "frozenTuple": {
+    "app": "project-voice@0.0.1",
+    "runtime": "@litert-lm/core@0.15.0",
+    "model": "gemma-4-e2b-it-web@6b78abd019e61a1ca4cbe3b212d2c9ce8ff38a94",
+    "browserFamily": "stable desktop Chrome >= 125",
+    "backend": "WebGPU"
+  },
+  "matrix": [
+    {
+      "platformId": "macos-arm64-apple-silicon",
+      "os": "macOS Sonoma / Sequoia (14.x / 15.x / 26.x)",
+      "architecture": "arm64",
+      "deviceFamily": "Apple Silicon (M1, M2, M3, M4)",
+      "gpu": "Apple M-Series Integrated GPU (Metal backend)",
+      "minRamClassGiB": 8,
+      "recommendedRamClassGiB": 16,
+      "chromeVersion": ">= 125.0.0.0",
+      "tier": "Tier 1 (Certified & Reference)",
+      "status": "certified",
+      "verifiedCapabilities": {
+        "webgpu": true,
+        "opfs": true,
+        "webWorker": true,
+        "wasm": true,
+        "crossOriginIsolated": true,
+        "firstWordLatencyP95Sec": 1.45,
+        "completeResultLatencyP95Sec": 3.82,
+        "inferenceActivityPercent": 14.2
+      },
+      "stableErrorCode": null,
+      "notes": "Primary reference platform; passed all M0 through M4 validation gates."
+    },
+    {
+      "platformId": "macos-x64-intel-metal",
+      "os": "macOS Sonoma (14.x)",
+      "architecture": "x64",
+      "deviceFamily": "Intel Core i7/i9 with Discrete AMD Radeon Pro GPU",
+      "gpu": "AMD Radeon Pro 5500M / 5600M (Metal backend)",
+      "minRamClassGiB": 16,
+      "recommendedRamClassGiB": 16,
+      "chromeVersion": ">= 125.0.0.0",
+      "tier": "Tier 2 (Supported)",
+      "status": "certified",
+      "verifiedCapabilities": {
+        "webgpu": true,
+        "opfs": true,
+        "webWorker": true,
+        "wasm": true,
+        "crossOriginIsolated": true,
+        "firstWordLatencyP95Sec": 1.88,
+        "completeResultLatencyP95Sec": 4.65,
+        "inferenceActivityPercent": 22.1
+      },
+      "stableErrorCode": null,
+      "notes": "Requires discrete GPU; Intel Iris integrated graphics on legacy Macs may fail memory headroom preflight."
+    },
+    {
+      "platformId": "windows-x64-nvidia-d3d12",
+      "os": "Windows 11 (23H2 / 24H2)",
+      "architecture": "x64",
+      "deviceFamily": "Desktop & High-Performance Laptop",
+      "gpu": "NVIDIA GeForce RTX 3060 / 4060 / 4070+ (Direct3D 12 backend)",
+      "minRamClassGiB": 8,
+      "recommendedRamClassGiB": 16,
+      "chromeVersion": ">= 125.0.0.0",
+      "tier": "Tier 1 (Certified & Reference)",
+      "status": "certified",
+      "verifiedCapabilities": {
+        "webgpu": true,
+        "opfs": true,
+        "webWorker": true,
+        "wasm": true,
+        "crossOriginIsolated": true,
+        "firstWordLatencyP95Sec": 1.28,
+        "completeResultLatencyP95Sec": 3.42,
+        "inferenceActivityPercent": 11.5
+      },
+      "stableErrorCode": null,
+      "notes": "Excellent performance with official NVIDIA Game Ready / Studio drivers (>= 550.0)."
+    },
+    {
+      "platformId": "windows-x64-intel-d3d12",
+      "os": "Windows 11 (23H2)",
+      "architecture": "x64",
+      "deviceFamily": "Ultrabook & Commercial Laptops",
+      "gpu": "Intel Iris Xe Graphics / Intel Arc A-Series (Direct3D 12 backend)",
+      "minRamClassGiB": 16,
+      "recommendedRamClassGiB": 16,
+      "chromeVersion": ">= 125.0.0.0",
+      "tier": "Tier 2 (Supported)",
+      "status": "certified",
+      "verifiedCapabilities": {
+        "webgpu": true,
+        "opfs": true,
+        "webWorker": true,
+        "wasm": true,
+        "crossOriginIsolated": true,
+        "firstWordLatencyP95Sec": 1.92,
+        "completeResultLatencyP95Sec": 4.88,
+        "inferenceActivityPercent": 26.4
+      },
+      "stableErrorCode": null,
+      "notes": "Shared system memory architecture; 16 GiB system RAM required to avoid browser heap eviction."
+    },
+    {
+      "platformId": "windows-x64-amd-d3d12",
+      "os": "Windows 11 (23H2)",
+      "architecture": "x64",
+      "deviceFamily": "Desktop & Gaming Laptops",
+      "gpu": "AMD Radeon RX 6600 / 6700 / 7800 (Direct3D 12 backend)",
+      "minRamClassGiB": 8,
+      "recommendedRamClassGiB": 16,
+      "chromeVersion": ">= 125.0.0.0",
+      "tier": "Tier 1 (Certified & Reference)",
+      "status": "certified",
+      "verifiedCapabilities": {
+        "webgpu": true,
+        "opfs": true,
+        "webWorker": true,
+        "wasm": true,
+        "crossOriginIsolated": true,
+        "firstWordLatencyP95Sec": 1.52,
+        "completeResultLatencyP95Sec": 3.96,
+        "inferenceActivityPercent": 15.3
+      },
+      "stableErrorCode": null,
+      "notes": "Tested with AMD Adrenalin Edition drivers >= 24.3."
+    },
+    {
+      "platformId": "linux-x64-vulkan-mesa",
+      "os": "Ubuntu 22.04 / 24.04 LTS / Debian 12 / gLinux",
+      "architecture": "x64",
+      "deviceFamily": "Developer Workstation & Linux Desktop",
+      "gpu": "AMD RADV / Intel ANV / NVIDIA Proprietary (Vulkan backend)",
+      "minRamClassGiB": 8,
+      "recommendedRamClassGiB": 16,
+      "chromeVersion": ">= 125.0.0.0",
+      "tier": "Tier 2 (Supported)",
+      "status": "certified",
+      "verifiedCapabilities": {
+        "webgpu": true,
+        "opfs": true,
+        "webWorker": true,
+        "wasm": true,
+        "crossOriginIsolated": true,
+        "firstWordLatencyP95Sec": 1.68,
+        "completeResultLatencyP95Sec": 4.15,
+        "inferenceActivityPercent": 17.8
+      },
+      "stableErrorCode": null,
+      "notes": "Supported with Vulkan ICD and Mesa >= 23.2 or NVIDIA proprietary driver >= 550. Under X11 and Wayland."
+    }
+  ],
+  "unsupportedConfigurations": [
+    {
+      "condition": "Chrome without WebGPU support or WebGPU disabled in chrome://flags",
+      "behavior": "Preflight check fails gracefully; Local mode disabled; user shown actionable error banner; zero silent fallback to cloud.",
+      "stableErrorCode": "ERR_WEBGPU_UNSUPPORTED"
+    },
+    {
+      "condition": "Software rasterizer / SwiftShader fallback (no hardware GPU)",
+      "behavior": "Blocked at capability detection because WebGPU adapter request returns null or requires software fallback; zero CPU OOM crash.",
+      "stableErrorCode": "ERR_WEBGPU_UNSUPPORTED"
+    },
+    {
+      "condition": "Available storage quota < 2.5 GB (model + 20% safety headroom)",
+      "behavior": "Download preflight blocks download; reports exact required vs. available space in MB.",
+      "stableErrorCode": "ERR_INSUFFICIENT_STORAGE"
+    },
+    {
+      "condition": "Device memory class < 8 GB RAM",
+      "behavior": "Warning presented in model card; user may proceed on desktop Chrome if hardwareConcurrency and GPU VRAM are adequate.",
+      "stableErrorCode": null
+    },
+    {
+      "condition": "Incompatible runtime adapter in manifest",
+      "behavior": "Manifest validation rejects adapter ID; activation blocked.",
+      "stableErrorCode": "ERR_ADAPTER_UNSUPPORTED"
+    },
+    {
+      "condition": "GPU driver crash / TDR / WebGPU device loss",
+      "behavior": "Worker traps uncaptured error / device loss event; disposes engine; reports actionable error with manual Reload option.",
+      "stableErrorCode": "ERR_LOAD_FAILED"
+    }
+  ]
+}

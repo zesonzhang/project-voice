@@ -140,6 +140,25 @@ def RunMacro():
   return macro.RunMacro(macro_id, user_inputs, temperature, model_id)
 
 
+@app.route('/api/features', methods=['GET'])
+def GetFeatures():
+  """Returns feature flags and rollout controls for on-device and experimental features."""
+  on_device_mode = os.environ.get('FEATURE_ON_DEVICE_MODE', 'all')
+  debug_import = os.environ.get('FEATURE_DEBUG_MODEL_IMPORT', '0') == '1'
+  try:
+    rollout_pct = int(os.environ.get('ON_DEVICE_ROLLOUT_PERCENTAGE', '100'))
+  except ValueError:
+    rollout_pct = 100
+
+  response = flask.jsonify({
+      'onDeviceMode': on_device_mode,
+      'debugModelImport': debug_import,
+      'rolloutPercentage': max(0, min(100, rollout_pct)),
+  })
+  response.headers['Cache-Control'] = 'public, max-age=60'
+  return response, 200
+
+
 @app.route('/api/on-device-models/default', methods=['GET'])
 def GetDefaultOnDeviceModel():
   catalog = model_catalog.get_catalog()

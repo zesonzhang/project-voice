@@ -143,6 +143,7 @@ const LEGAL_STATE_TRANSITIONS: Record<
   ready: new Set([
     'generating',
     'downloading',
+    'downloaded',
     'update_available',
     'not_downloaded',
     'error',
@@ -165,6 +166,15 @@ const LEGAL_STATE_TRANSITIONS: Record<
   ]),
 };
 
+export interface StateTransitionRecord {
+  timestamp: number;
+  from: ModelLifecycleState;
+  to: ModelLifecycleState;
+  modelId?: string;
+  version?: string;
+  errorCode?: ModelErrorCode;
+}
+
 /**
  * ModelManager orchestrates the complete on-device model lifecycle:
  * Preflight capabilities, resumable Range downloads, streaming SHA-256 verification,
@@ -175,6 +185,7 @@ export class ModelManager {
   private activeManifest: ModelManifest | null = null;
   private currentErrorCode: ModelErrorCode | null = null;
   private currentErrorMessage: string | null = null;
+  private transitionHistory: StateTransitionRecord[] = [];
 
   private downloadAbortController: AbortController | null = null;
   private currentSignedUrlInfo: SignedDownloadUrlResponse | null = null;
@@ -395,6 +406,7 @@ export class ModelManager {
         `Illegal model lifecycle transition: ${this.state} -> ${newState}`,
       );
     }
+    const oldState = this.state;
     this.state = newState;
     if (error) {
       this.currentErrorCode = error.code;
@@ -402,6 +414,18 @@ export class ModelManager {
     } else if (newState !== 'error') {
       this.currentErrorCode = null;
       this.currentErrorMessage = null;
+    }
+
+    this.transitionHistory.push({
+      timestamp: Date.now(),
+      from: oldState,
+      to: newState,
+      modelId: this.activeManifest?.modelId,
+      version: this.activeManifest?.version,
+      errorCode: error?.code,
+    });
+    if (this.transitionHistory.length > 50) {
+      this.transitionHistory.shift();
     }
 
     if (this.activeManifest) {
@@ -421,6 +445,18 @@ export class ModelManager {
         console.error('Error in state listener:', err);
       }
     }
+  }
+
+  getTransitionHistory(): StateTransitionRecord[] {
+    return [...this.transitionHistory];
+  }
+
+  getStorage(): ModelStorage {
+    return this.storage;
+  }
+
+  getMetadataStore(): ModelMetadataStore {
+    return this.metadataStore;
   }
 
   /**
