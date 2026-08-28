@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-import {verifyArtifactDigest} from './hash-verifier.js';
+import {StreamingSha256, verifyArtifactDigest} from './hash-verifier.js';
 import {ModelApiClient, SignedDownloadUrlResponse} from './model-client.js';
 import {ModelManifest} from './model-manifest.js';
-import {ModelMetadataStore} from './model-metadata.js';
+import {ModelMetadataStore, ModelVersionRecord} from './model-metadata.js';
+import {ModelRuntimeAdapter} from './model-runtime-adapter.js';
 import {ModelStorage} from './model-storage.js';
 import {BrowserTabCoordinator, TabCoordinator} from './tab-coordinator.js';
 
@@ -73,6 +74,7 @@ export interface ModelManagerOptions {
   metadataStore: ModelMetadataStore;
   storage: ModelStorage;
   apiClient: ModelApiClient;
+  runtimeAdapter?: ModelRuntimeAdapter;
   tabCoordinator?: TabCoordinator;
   smokeTestHook?: (file: File, manifest: ModelManifest) => Promise<boolean>;
   persistenceRequester?: () => Promise<boolean>;
@@ -196,6 +198,9 @@ export class ModelManager {
     adapterId: string,
   ) => boolean | Promise<boolean>;
   private readonly fetchImpl: typeof fetch;
+  private runtimeAdapter?: ModelRuntimeAdapter;
+  private startupTask: Promise<void> | null = null;
+  private startupAutoLoadRequested = false;
 
   private stateListeners = new Set<
     (
@@ -210,6 +215,7 @@ export class ModelManager {
     this.metadataStore = options.metadataStore;
     this.storage = options.storage;
     this.apiClient = options.apiClient;
+    this.runtimeAdapter = options.runtimeAdapter;
     this.tabCoordinator = options.tabCoordinator || new BrowserTabCoordinator();
     this.smokeTestHook = options.smokeTestHook || defaultModelCandidateProbe;
     this.persistenceRequester = options.persistenceRequester;
@@ -248,12 +254,103 @@ export class ModelManager {
     });
   }
 
+  setRuntimeAdapter(adapter: ModelRuntimeAdapter): void {
+    this.runtimeAdapter = adapter;
+  }
+
+  getRuntimeAdapter(): ModelRuntimeAdapter | undefined {
+    return this.runtimeAdapter;
+  }
+
+  /**
+   * M3.3 Loads active OPFS candidate model into runtime adapter and runs smoke verification.
+   */
+  async loadActiveModel(): Promise<void> {
+    if (this.state === 'ready') return;
+    if (!this.activeManifest) {
+      throw new ModelManagerError(
+        'ERR_LOAD_FAILED',
+        'No active model manifest configured to load.',
+      );
+    }
+    const modelId = this.activeManifest.modelId;
+    const activeRecord = await this.metadataStore.getModel(modelId);
+    const version = activeRecord?.activeVersion ?? this.activeManifest.version;
+    const file = await this.storage.openModelFile(modelId, version);
+
+    this.transitionTo('loading');
+    try {
+      if (this.runtimeAdapter) {
+        await this.runtimeAdapter.load(this.activeManifest, file);
+        const smokePassed = await this.smokeTestHook(file, this.activeManifest);
+        if (!smokePassed) {
+          throw new ModelManagerError(
+            'ERR_SMOKE_TEST_FAILED',
+            'Model activation smoke test failed.',
+          );
+        }
+      }
+      this.transitionTo('ready');
+    } catch (err: unknown) {
+      const code =
+        err instanceof ModelManagerError ? err.code : 'ERR_LOAD_FAILED';
+      const message = err instanceof Error ? err.message : String(err);
+      this.transitionTo('error', {
+        code,
+        message: `Failed to load model: ${message}`,
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * Unloads active model from runtime adapter, freeing GPU/RAM.
+   */
+  async unloadActiveModel(): Promise<void> {
+    if (this.runtimeAdapter) {
+      await this.runtimeAdapter.dispose();
+    }
+    if (this.state === 'ready' || this.state === 'loading') {
+      this.transitionTo('downloaded');
+    }
+  }
+
+  /**
+   * M3.3 Startup reconciliation and optional automatic load.
+   */
+  async startup(autoLoad = false): Promise<void> {
+    this.startupAutoLoadRequested ||= autoLoad;
+    if (this.state === 'ready') return;
+    if (this.startupTask) return this.startupTask;
+
+    this.startupTask = (async () => {
+      if (this.state !== 'downloaded') {
+        await this.initialize();
+      }
+      if (this.startupAutoLoadRequested && this.state === 'downloaded') {
+        await this.loadActiveModel();
+      }
+    })().finally(() => {
+      this.startupTask = null;
+      this.startupAutoLoadRequested = false;
+    });
+    return this.startupTask;
+  }
+
   getState(): ModelLifecycleState {
     return this.state;
   }
 
   getActiveManifest(): ModelManifest | null {
     return this.activeManifest;
+  }
+
+  async getActiveVersionMetadata(): Promise<ModelVersionRecord | null> {
+    const manifest = this.activeManifest;
+    if (!manifest) return null;
+    const model = await this.metadataStore.getModel(manifest.modelId);
+    const version = model?.activeVersion ?? manifest.version;
+    return this.metadataStore.getVersion(manifest.modelId, version);
   }
 
   getError(): {code: ModelErrorCode; message: string} | null {
@@ -1025,11 +1122,16 @@ export class ModelManager {
    */
   async activateCandidate(manifest: ModelManifest): Promise<void> {
     this.transitionTo('loading');
+    let activationPhase: 'load' | 'smoke' = 'load';
     try {
       const file = await this.storage.openModelFile(
         manifest.modelId,
         manifest.version,
       );
+      if (this.runtimeAdapter) {
+        await this.runtimeAdapter.load(manifest, file);
+      }
+      activationPhase = 'smoke';
       const smokeTestPassed = await this.smokeTestHook(file, manifest);
       if (!smokeTestPassed) {
         throw new Error('Smoke test failed for model candidate');
@@ -1045,8 +1147,11 @@ export class ModelManager {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       this.transitionTo('error', {
-        code: 'ERR_SMOKE_TEST_FAILED',
-        message: `Model activation smoke test failed: ${message}`,
+        code:
+          activationPhase === 'load'
+            ? 'ERR_LOAD_FAILED'
+            : 'ERR_SMOKE_TEST_FAILED',
+        message: `Model activation ${activationPhase} failed: ${message}`,
       });
     }
   }
@@ -1123,6 +1228,21 @@ export class ModelManager {
         rolledBackVersion,
       )) === versionRecord.sizeBytes
     ) {
+      if (this.runtimeAdapter) {
+        try {
+          const file = await this.storage.openModelFile(
+            this.activeManifest.modelId,
+            rolledBackVersion,
+          );
+          await this.runtimeAdapter.load(versionRecord.manifest, file);
+        } catch (error) {
+          this.transitionTo('error', {
+            code: 'ERR_LOAD_FAILED',
+            message: `Failed to load rollback model: ${(error as Error).message}`,
+          });
+          return false;
+        }
+      }
       await this.metadataStore.rollbackToLastKnownGood(
         this.activeManifest.modelId,
       );
@@ -1137,15 +1257,18 @@ export class ModelManager {
    * Remove model and clean up storage and metadata.
    */
   async removeModel(modelId: string, version: string): Promise<void> {
+    const removingActiveModel =
+      this.activeManifest?.modelId === modelId &&
+      this.activeManifest.version === version;
+    if (removingActiveModel && this.runtimeAdapter) {
+      await this.runtimeAdapter.dispose();
+    }
     await this.storage.deleteModel(modelId, version);
     await this.storage.deletePartial(modelId, version);
     await this.metadataStore.deleteVersion(modelId, version);
-    if (
-      this.activeManifest?.modelId === modelId &&
-      this.activeManifest.version === version
-    ) {
-      this.activeManifest = null;
+    if (removingActiveModel) {
       this.transitionTo('not_downloaded');
+      this.activeManifest = null;
     }
   }
 
@@ -1167,5 +1290,86 @@ export class ModelManager {
       }
     }
     return cleaned;
+  }
+
+  /**
+   * M3.10 Development/debug model import.
+   * Copies .litertlm file into OPFS, computes SHA-256, records unverified candidate,
+   * probes and loads model, and marks active.
+   */
+  async importLocalModel(file: File): Promise<void> {
+    if (!file || file.size <= 0) {
+      throw new ModelManagerError('ERR_LOAD_FAILED', 'Invalid model file');
+    }
+    if (!file.name.toLowerCase().endsWith('.litertlm')) {
+      throw new ModelManagerError(
+        'ERR_LOAD_FAILED',
+        'Local model imports must use the .litertlm file extension.',
+      );
+    }
+    const modelId = 'imported';
+    const version = `v-${Date.now()}`;
+    const chunkSize = 2 * 1024 * 1024;
+    const hasher = new StreamingSha256();
+
+    let offset = 0;
+    while (offset < file.size) {
+      const slice = file.slice(offset, Math.min(file.size, offset + chunkSize));
+      const arrayBuffer = await slice.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      hasher.update(bytes);
+      await this.storage.writeChunk(modelId, version, bytes, offset);
+      offset += bytes.byteLength;
+    }
+    await this.storage.promotePartialToModel(modelId, version);
+    const sha256 = hasher.digest();
+
+    const manifest: ModelManifest = {
+      schemaVersion: 1,
+      modelId,
+      version,
+      displayName: file.name.replace(/\.litertlm$/, ''),
+      family: 'gemma',
+      adapterId: 'litert-lm',
+      format: 'litertlm',
+      sizeBytes: file.size,
+      sha256,
+      gcsGeneration: '0',
+      capabilities: {
+        textGeneration: true,
+        languages: ['en', 'ja', 'zh', 'fr', 'de', 'sv'],
+        maxInputTokens: 2048,
+        maxOutputTokens: 256,
+      },
+      requirements: {
+        webgpu: true,
+        minimumDeviceMemoryGB: 8,
+        minimumFreeStorageBytes: Math.round(file.size * 1.2),
+      },
+      generation: {
+        temperature: 0,
+        topP: 0.5,
+        maxOutputTokens: 256,
+      },
+    };
+
+    await this.metadataStore.saveVersion({
+      modelId,
+      version,
+      manifest,
+      fileName: `${version}.litertlm`,
+      partialFileName: `${version}.partial`,
+      sizeBytes: file.size,
+      sha256,
+      gcsGeneration: '0',
+      downloadOffset: file.size,
+      verificationState: 'verified',
+      importStatus: 'unverified_import',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    });
+
+    await this.activateCandidate(manifest);
   }
 }

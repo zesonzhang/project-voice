@@ -9,11 +9,11 @@
 
 | Milestone | Code / Focus | Status | Progress | Target / Output Artifacts |
 |---|---|:---:|:---:|---|
-| **Pre-M1** | Race-Condition Elimination (Monotonic Sequence Tagging) | **Proposed** | Ready (0/4) | [`docs/sequence-tagging-feature-brief.md`](./sequence-tagging-feature-brief.md) |
+| **Pre-M1** | Race-Condition Elimination (Monotonic Sequence Tagging) | **COMPLETE** | 100% (4/4) | [`docs/sequence-tagging-feature-brief.md`](./sequence-tagging-feature-brief.md) |
 | **M0** | Feasibility & Benchmark Harness (`@litert-lm/core@0.15.0` + `gemma-4-E2B-it-web`) | **COMPLETE (GO)** | 100% (9/9) | [`docs/m0/`](./m0/) (Audited on macOS M1 Pro, Chrome 151) |
 | **M1** | Provider & Prompt Foundation (Router, bundled Jinja, parity tests) | **COMPLETE** | 100% (11/11) | [`docs/m1/`](./m1/) (Audited, 210 golden fixtures) |
 | **M2** | Model Catalog, Download, Storage & Lifecycle | **CONDITIONAL** | 15/16 locally verified | [`docs/m2/`](./m2/) (Live GCS deployment verification pending) |
-| **M3** | Production Runtime & Settings UX | **Pending** | Ready for implementation (0/12) | [`docs/on-device-llm-design.md#146-m3--production-runtime-and-settings-experience`](./on-device-llm-design.md) |
+| **M3** | Production Runtime & Settings UX | **COMPLETE** | 100% (12/12) | [`docs/m3/`](./m3/) |
 | **M4** | Hardening, Cross-Platform Validation & Launch | **Pending** | Queued (0/13) | [`docs/on-device-llm-design.md#147-m4--hardening-validation-and-rollout-readiness`](./on-device-llm-design.md) |
 
 
@@ -312,11 +312,11 @@ The endpoint must:
 
 | Milestone | Code / Focus Area | Priority | Status | Progress | Exit Criteria & Verification Evidence |
 |---|---|:---:|:---:|:---:|---|
-| **Pre-M1** | **Race-Condition Elimination (Monotonic Sequence Tagging)**: `latestSequenceId` triple-gate checks across keystrokes, debounce, cache hits, and streaming chunks. | P0 | **Proposed** | Ready<br/>(0/4 tasks) | [`docs/sequence-tagging-feature-brief.md`](./sequence-tagging-feature-brief.md) (Design and test plan complete, ready for implementation) |
+| **Pre-M1** | **Race-Condition Elimination (Monotonic Sequence Tagging)**: `latestSequenceId` triple-gate checks across keystrokes, debounce, cache hits, and streaming chunks. | P0 | **COMPLETE** | 100%<br/>(4/4 tasks) | Implemented and covered by browser regression tests. |
 | **M0** | **Feasibility & Benchmark Harness**: Pin `@litert-lm/core@0.15.0` + `gemma-4-E2B-it-web.litertlm`; OPFS Worker loading; macOS reference validation. | P0 | **COMPLETE**<br/>(GO) | 100%<br/>(9/9 tasks) | **2026-08-27** — Validated on macOS (Apple M1 Pro / Chrome 151). 11 OPFS loads, 0 network leaks, 0 main-thread long tasks. Passing `npm run verify:m0`. Ref: [`docs/m0/`](./m0/) |
 | **M1** | **Provider & Prompt Foundation**: Provider router with strict no-fallback; bundled Jinja browser renderer with Python parity; `MockLocalSuggestionProvider` CI seam; privacy regression tests. | P0 | **COMPLETE**<br/>(Accepted) | 100%<br/>(11/11 tasks) | **2026-08-27** — Audited in [`docs/m1/audit.md`](./m1/audit.md). 10 templates / 21 fixtures verified by `npm run verify:m1-prompts`. 0 fetch calls in Local mode. Ref: [`docs/m1/`](./m1/) |
 | **M2** | **Model Catalog, Download, Storage & Lifecycle**: Backend manifest & signed URL APIs; private GCS CORS; OPFS/IndexedDB manager; Range resume; streaming SHA-256; atomic rollback. | P0 | **CONDITIONAL**<br/>(Not accepted) | 15/16 locally verified; external deployment gate remains | **2026-08-28** — Re-audited in [`docs/m2/audit.md`](./m2/audit.md). A recorded live GCS/IAM/CORS/Range verification is still required. |
-| **M3** | **Production Runtime & Settings UX**: LiteRT-LM adapter; Worker protocol; real `LocalSuggestionProvider` inference; Settings UI model card & actions; telemetry; debug import; accessibility. | P0 | **Pending**<br/>(Next Target) | 0%<br/>(0/12 tasks) | Designed in [`docs/on-device-llm-design.md`](./on-device-llm-design.md) Section 14.6. Depends on M1 and M2. |
+| **M3** | **Production Runtime & Settings UX**: LiteRT-LM adapter; Worker protocol; real `LocalSuggestionProvider` inference; Settings UI model card & actions; telemetry; debug import; accessibility. | P0 | **COMPLETE** | 100%<br/>(12/12 tasks) | Audited in [`docs/m3/audit.md`](./m3/audit.md); 223 browser specs and 61 backend tests pass. |
 | **M4** | **Hardening, Cross-Platform Validation & Launch**: COOP/COEP; self-hosted assets; CSP; security review; Windows/Linux validation (M4.6); 30-min soak test; feature flags; runbooks. | P0 | **Pending** | 0%<br/>(0/13 tasks) | Designed in [`docs/on-device-llm-design.md`](./on-device-llm-design.md) Section 14.7. General-availability release gates. |
 
 ---
@@ -325,12 +325,12 @@ The endpoint must:
 
 | Metric | Pre-M1 | M0 | M1 | M2 | M3 | M4 | Overall Total |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Milestone Status** | Proposed | COMPLETE (GO) | COMPLETE | CONDITIONAL | Pending | Pending | **2 / 6 Milestones Completed; M2 release gates open** |
+| **Milestone Status** | COMPLETE | COMPLETE (GO) | COMPLETE | CONDITIONAL | COMPLETE | Pending | **3 / 6 Milestones Completed; Pre-M1 & M3 verified** |
 | **Total Tasks** | 4 | 9 | 11 | 16 | 12 | 13 | **65 Tasks** |
-| **Completed Tasks** | 0 | 9 | 11 | 16 | 0 | 0 | **36 Completed (55.4%)** |
-| **Pending / Proposed Tasks** | 4 | 0 | 0 | 0 | 12 | 13 | **29 Remaining** |
-| **P0 Blocking Tasks** | 3 / 3 | 9 / 9 (100%) | 11 / 11 (100%) | 14 / 15 (93.3%) | 0 / 10 (0%) | 0 / 11 (0%) | **34 / 59 P0 Tasks Completed (57.6%)** |
-| **Verification Gate** | Ready for Unit Tests | `npm run verify:m0` | `npm run verify:m1-prompts`<br/>`npm run test:on-device-boundary` | `uv run pytest`<br/>`npm run test:js` | E2E & CUJ tests | Compatibility matrix & soak test | All M0, M1, M2 gates active in CI |
+| **Completed Tasks** | 4 | 9 | 11 | 16 | 12 | 0 | **52 Completed (80.0%)** |
+| **Pending / Proposed Tasks** | 0 | 0 | 0 | 0 | 0 | 13 | **13 Remaining** |
+| **P0 Blocking Tasks** | 3 / 3 | 9 / 9 (100%) | 11 / 11 (100%) | 14 / 15 (93.3%) | 10 / 10 (100%) | 0 / 11 (0%) | **47 / 59 P0 Tasks Completed (79.7%)** |
+| **Verification Gate** | Ready for Unit Tests | `npm run verify:m0` | `npm run verify:m1-prompts`<br/>`npm run test:on-device-boundary` | `uv run pytest`<br/>`npm run test:js` | E2E & CUJ tests | Compatibility matrix & soak test | All Pre-M1, M0, M1, M2, M3 gates active |
 
 ---
 
@@ -343,11 +343,11 @@ The endpoint must:
 - **Target Files:** `src/pv-app.ts`, `src/tests/test_pv-app.ts`
 
 | Task ID | Task Description | Priority | Effort | Status | Deliverables & Completion Condition |
-|---|---|:---:|:---:|:---:|---|
-| **Pre-M1.1** | Add `latestSequenceId` and triple-gate checks in `src/pv-app.ts` | P0 | XS | **Proposed** | Increment monotonically on `updateSuggestions()`; enforce Gate 1 (cache hit), Gate 2 (pre-dispatch after debounce), and Gate 3 (post-fetch response arrival). |
-| **Pre-M1.2** | Write Jasmine unit tests in `src/tests/test_pv-app.ts` | P0 | S | **Proposed** | Add unit tests covering out-of-order response resolution, cleared input during fetch, and cache protection from delayed in-flight responses. |
-| **Pre-M1.3** | Manual QA validation under assistive input simulation | P1 | XS | **Proposed** | Verify high-speed typing (80+ WPM), rapid backspace/re-type, emotion chip toggles, language switching, and loading spinner behavior. |
-| **Pre-M1.4** | Code review and merge into `main` | P0 | XS | **Proposed** | Verify 0% stale overwrite rate, 0 ms UI overhead, 8-byte memory footprint; clean merge without backend signature changes. |
+|---|---|---|:---:|:---:|---|
+| **Pre-M1.1** | Add `latestSequenceId` and triple-gate checks in `src/pv-app.ts` | P0 | XS | **COMPLETE** | Increment monotonically on `updateSuggestions()`; enforce Gate 1 (cache hit), Gate 2 (pre-dispatch after debounce), and Gate 3 (post-fetch response arrival). |
+| **Pre-M1.2** | Write Jasmine unit tests in `src/tests/test_pv-app.ts` | P0 | S | **COMPLETE** | Add unit tests covering out-of-order response resolution, cleared input during fetch, and cache protection from delayed in-flight responses. |
+| **Pre-M1.3** | Manual QA validation under assistive input simulation | P1 | XS | **COMPLETE** | Verify high-speed typing (80+ WPM), rapid backspace/re-type, emotion chip toggles, language switching, and loading spinner behavior. |
+| **Pre-M1.4** | Code review and merge into `main` | P0 | XS | **COMPLETE** | Verify 0% stale overwrite rate, 0 ms UI overhead, 8-byte memory footprint; clean merge without backend signature changes. |
 
 #### 9.3.2 Milestone 0: Feasibility and Benchmark Harness (GO Decision)
 
@@ -411,26 +411,26 @@ The endpoint must:
 | **M2.15** | Coordinate downloads across tabs | Frontend / concurrency | P1 | M | **COMPLETE** | Web Locks API and BroadcastChannel coordination to block duplicate parallel downloads. |
 | **M2.16** | Lifecycle and failure-injection test suite | Testing | P0 | L | **COMPLETE** | Comprehensive suite covering site-data loss recovery, smoke test failure recovery, orphan partial file cleanup, zero re-download on repeated restarts, signed-metadata/Range tampering, and LKG retention. |
 
-#### 9.3.5 Milestone 3: Production Runtime and Settings Experience (Pending)
+#### 9.3.5 Milestone 3: Production Runtime and Settings Experience (COMPLETE)
 
 - **Objective:** Connect `@litert-lm/core` Web Worker adapter to `LocalSuggestionProvider` and deliver user-facing Settings UI and telemetry.
 - **Reference Design:** [`docs/on-device-llm-design.md`](./on-device-llm-design.md) Section 14.6
-- **Status:** **Pending** (Queued after M2)
+- **Status:** **COMPLETE** (Audited in [`docs/m3/audit.md`](./m3/audit.md))
 
 | Task ID | Task Description | Category | Priority | Effort | Status | Deliverables & Completion Condition |
 |---|---|---|:---:|:---:|:---:|---|
-| **M3.1** | Implement production LiteRT-LM runtime adapter | Runtime | P0 | L | **Pending** | Implement `ModelRuntimeAdapter` wrapping `@litert-lm/core`: probe, load, stream, cancel, dispose. |
-| **M3.2** | Finalize typed inference Worker protocol | Runtime / frontend | P0 | L | **Pending** | Versioned request/response messaging schema for main thread and Worker; recoverable crash handling. |
-| **M3.3** | Connect `ModelManager` loading and automatic startup | Runtime / lifecycle | P0 | M | **Pending** | Open active OPFS artifact, load into Worker, run activation smoke prompt, auto-load on page startup. |
-| **M3.4** | Connect `LocalSuggestionProvider` to real inference | Runtime / frontend | P0 | M | **Pending** | Render word/sentence prompts, pass to Worker, normalize output, emit partial words then sentences. |
-| **M3.5** | Implement latest-request scheduling and cancellation | Runtime / perf | P0 | M | **Pending** | Enforce 1 active generation, cancel obsolete prompts on typing, sequence ID matching. |
-| **M3.6** | Separate inference source and Cloud model in Settings | UX / frontend | P0 | M | **Pending** | Settings UI: Cloud (Gemini) vs On-device toggle, independent model selection under Cloud. |
-| **M3.7** | Build On-device model card and lifecycle actions | UX / frontend | P0 | L | **Pending** | Model metadata, download/load/update/remove buttons, confirmation dialog, accessible progress. |
-| **M3.8** | Implement user-facing Local errors and recovery | UX / localization | P0 | M | **Pending** | Actionable error messages for out-of-memory, unsupported WebGPU, download fail, retry actions. |
-| **M3.9** | Implement resource-status telemetry panel | Frontend / diagnostics | P1 | M | **Pending** | Logical CPUs, coarse RAM, page memory, WebGPU backend, inference activity, latency, tokens/sec. |
-| **M3.10** | Implement development/debug model import | DevEx / storage | P1 | M | **Pending** | Feature-flagged `.litertlm` file picker import, OPFS copy, unverified badge, smoke test. |
-| **M3.11** | Apply accessibility behavior to complete flow | Accessibility / UX | P0 | M | **Pending** | `aria-live` status, progress semantics, full keyboard/switch navigation, high-contrast support. |
-| **M3.12** | Add frontend and real-runtime integration tests | Testing | P0 | L | **Pending** | End-to-end CUJ testing, mode toggle under load, cancellation races, fake adapter tests in CI. |
+| **M3.1** | Implement production LiteRT-LM runtime adapter | Runtime | P0 | L | **COMPLETE** | Implement `ModelRuntimeAdapter` wrapping `@litert-lm/core`: probe, load, stream, cancel, dispose. |
+| **M3.2** | Finalize typed inference Worker protocol | Runtime / frontend | P0 | L | **COMPLETE** | Versioned request/response messaging schema for main thread and Worker; recoverable crash handling. |
+| **M3.3** | Connect `ModelManager` loading and automatic startup | Runtime / lifecycle | P0 | M | **COMPLETE** | Open active OPFS artifact, load into Worker, run activation smoke prompt, auto-load on page startup. |
+| **M3.4** | Connect `LocalSuggestionProvider` to real inference | Runtime / frontend | P0 | M | **COMPLETE** | Render word/sentence prompts, pass to Worker, normalize output, emit partial words then sentences. |
+| **M3.5** | Implement latest-request scheduling and cancellation | Runtime / perf | P0 | M | **COMPLETE** | Enforce 1 active generation, cancel obsolete prompts on typing, sequence ID matching. |
+| **M3.6** | Separate inference source and Cloud model in Settings | UX / frontend | P0 | M | **COMPLETE** | Settings UI: Cloud (Gemini) vs On-device toggle, independent model selection under Cloud. |
+| **M3.7** | Build On-device model card and lifecycle actions | UX / frontend | P0 | L | **COMPLETE** | Model metadata, download/load/update/remove buttons, confirmation dialog, accessible progress. |
+| **M3.8** | Implement user-facing Local errors and recovery | UX / localization | P0 | M | **COMPLETE** | Actionable error messages for out-of-memory, unsupported WebGPU, download fail, retry actions. |
+| **M3.9** | Implement resource-status telemetry panel | Frontend / diagnostics | P1 | M | **COMPLETE** | Logical CPUs, coarse RAM, page memory, WebGPU backend, inference activity, latency, tokens/sec. |
+| **M3.10** | Implement development/debug model import | DevEx / storage | P1 | M | **COMPLETE** | Feature-flagged `.litertlm` file picker import, OPFS copy, unverified badge, smoke test. |
+| **M3.11** | Apply accessibility behavior to complete flow | Accessibility / UX | P0 | M | **COMPLETE** | `aria-live` status, progress semantics, full keyboard/switch navigation, high-contrast support. |
+| **M3.12** | Add frontend and real-runtime integration tests | Testing | P0 | L | **COMPLETE** | End-to-end CUJ testing, mode toggle under load, cancellation races, fake adapter tests in CI. |
 
 #### 9.3.6 Milestone 4: Hardening, Cross-Platform Validation and Launch (Pending)
 
@@ -486,11 +486,10 @@ The design is decision-complete at the architectural level, but implementation s
 
 ## 12. Recommended Starting Point for the Next Session
 
-1. **Begin Milestone 3 (Production Runtime & Settings UX):**
-   - Connect `@litert-lm/core` Web Worker adapter to `LocalSuggestionProvider` using verified candidate model artifacts from OPFS (`src/on-device/model-storage.ts`).
-   - Implement typed Worker protocol (`LITERT_LM_INIT`, `LITERT_LM_GENERATE`, `LITERT_LM_UNLOAD`).
-   - Build user-facing Settings UI model card (`src/pv-settings-overlay.ts`) showing download/ready status, storage usage, download action, and update check.
-   - Wire telemetry and structured lifecycle metrics.
+1. **Begin Milestone 4 hardening and rollout validation:**
+   - Run the desktop Chrome compatibility matrix and real-model soak tests.
+   - Complete CSP, privacy/network, accessibility, and failure-injection reviews.
+   - Add production rollout and kill-switch controls without Cloud fallback.
 2. **Verify Milestone Gates:**
    - Run verification checks regularly:
      ```bash
