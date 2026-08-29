@@ -520,7 +520,9 @@ export class PvAppElement extends SignalWatcher(LitElement) {
   }
 
   private isBlank() {
-    return this.textField && this.textField.value === '';
+    return this.textField
+      ? this.textField.value === ''
+      : this.stateInternal.text === '';
   }
 
   private updateConversationHistory() {
@@ -637,6 +639,7 @@ export class PvAppElement extends SignalWatcher(LitElement) {
 
   private timeoutId: number | undefined;
   private inFlightRequests = 0;
+  private suggestionRequestId = 0;
 
   private prevCallsMs: number[] = [];
 
@@ -648,8 +651,10 @@ export class PvAppElement extends SignalWatcher(LitElement) {
     return Math.min(150 * (this.prevCallsMs.length - 1), 300);
   }
 
-  async updateSuggestions() {
+  updateSuggestions() {
     window.clearTimeout(this.timeoutId);
+    const requestId = ++this.suggestionRequestId;
+    this.apiClient.abortFetch();
 
     const now = Date.now();
     this.prevCallsMs.push(now);
@@ -667,10 +672,10 @@ export class PvAppElement extends SignalWatcher(LitElement) {
 
     if (isBlankAtCall) {
       if (!hasHistoryOrMemory) {
-        this.apiClient.abortFetch();
         this.isLoading = false;
         this.suggestions = [];
         this.words = [];
+        this.requestUpdate();
         return;
       }
 
@@ -682,6 +687,11 @@ export class PvAppElement extends SignalWatcher(LitElement) {
         cacheEntry.historyKey === historyKey &&
         cacheEntry.memoryKey === memoryKey
       ) {
+        // Gate 1: Check cache validity against latest sequence ID.
+        if (requestId !== this.suggestionRequestId) {
+          return;
+        }
+        this.isLoading = false;
         this.suggestions = cacheEntry.suggestions;
         this.words = [];
         this.requestUpdate();
@@ -690,6 +700,10 @@ export class PvAppElement extends SignalWatcher(LitElement) {
     }
 
     this.timeoutId = window.setTimeout(async () => {
+      // Gate 2: Pre-dispatch check (has user typed while debounce timer was ticking?)
+      if (requestId !== this.suggestionRequestId) {
+        return;
+      }
       this.inFlightRequests++;
       this.isLoading = true;
       const [firstHalf, secondHalf] = splitLastFewSentencesForLLM(
@@ -711,25 +725,33 @@ export class PvAppElement extends SignalWatcher(LitElement) {
         );
       }
 
-      const result = await this.apiClient.fetchSuggestions(
-        secondHalf,
-        this.stateInternal.lang.promptName,
-        this.stateInternal.model,
-        {
-          sentenceMacroId,
-          wordMacroId,
-          persona: this.stateInternal.persona,
-          lastInputSpeech: this.state.lastInputSpeech,
-          lastOutputSpeech: this.state.lastOutputSpeech,
-          conversationHistory: historyKey,
-          sentenceEmotion: this.state.emotion,
-        },
-      );
-      this.inFlightRequests--;
-      if (this.inFlightRequests === 0) {
-        this.isLoading = false;
+      let result: [string[], string[]] | null = null;
+      try {
+        result = await this.apiClient.fetchSuggestions(
+          secondHalf,
+          this.stateInternal.lang.promptName,
+          this.stateInternal.model,
+          {
+            sentenceMacroId,
+            wordMacroId,
+            persona: this.stateInternal.persona,
+            lastInputSpeech: this.state.lastInputSpeech,
+            lastOutputSpeech: this.state.lastOutputSpeech,
+            conversationHistory: historyKey,
+            sentenceEmotion: this.state.emotion,
+          },
+        );
+      } catch (error) {
+        console.error('API client fetchSuggestions failed.', error);
+      } finally {
+        this.inFlightRequests--;
+        if (this.inFlightRequests === 0) {
+          this.isLoading = false;
+        }
       }
-      if (!result) {
+
+      // Gate 3: Final settlement check (discard stale out-of-order responses)
+      if (!result || requestId !== this.suggestionRequestId) {
         return;
       }
       const [sentenceValues, words] = result;
