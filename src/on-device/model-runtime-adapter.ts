@@ -42,6 +42,21 @@ export interface RuntimeMetrics {
   dutyCyclePercent?: number;
 }
 
+export type RuntimeStatus =
+  | 'idle'
+  | 'loading'
+  | 'ready'
+  | 'generating'
+  | 'canceling'
+  | 'error';
+
+export interface RuntimeStatusEvent {
+  status: RuntimeStatus;
+  errorCode?: string;
+  errorMessage?: string;
+  recoverable?: boolean;
+}
+
 /**
  * Standard runtime adapter interface for on-device inference engines.
  * Isolates runtime specifics (LiteRT-LM, WebGPU, etc.) from the application.
@@ -55,4 +70,5 @@ export interface ModelRuntimeAdapter {
   cancel(): Promise<void>;
   dispose(): Promise<void>;
   getMetrics(): RuntimeMetrics;
+  onStatusChange(listener: (event: RuntimeStatusEvent) => void): () => void;
 }

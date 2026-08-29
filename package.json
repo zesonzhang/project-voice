@@ -9,7 +9,7 @@
     "lint:js": "tsc --noEmit && gts lint \"src/**/*.ts\"",
     "lint:py": "uv run yapf --diff *.py tools/*.py tests/*.py",
     "clean": "gts clean",
-    "build": "npm run localize:build && npm run verify:m1-prompts && esbuild src/index.ts --bundle --minify --loader:.jinja2=text --outfile=static/index.js && uv pip compile pyproject.toml -o requirements.txt",
+    "build": "npm run localize:build && npm run verify:m1-prompts && esbuild src/index.ts --bundle --minify --loader:.jinja2=text --outfile=static/index.js && node tools/build-worker.mjs && uv pip compile pyproject.toml -o requirements.txt",
     "build:storybook": "storybook build",
     "localize:extract": "lit-localize extract",
     "localize:build": "lit-localize build",
@@ -22,6 +22,10 @@
     "verify:m1-prompts": "node tools/verify-m1-prompt-parity.mjs",
     "verify:gcs": "uv run python tools/verify_gcs_distribution.py --live",
     "verify:gcs:policy": "uv run python tools/verify_gcs_distribution.py",
+    "test:on-device-boundary": "node tools/test-on-device-boundary.mjs",
+    "verify:m4-privacy": "node tools/verify-m4-privacy-network.mjs",
+    "verify:m4-compatibility": "node tools/verify-m4-compatibility.mjs",
+    "test:m4-soak": "node tools/m4-soak-runner.mjs",
     "test:py": "uv run pytest",
     "test": "concurrently \"npm:test:*\"",
     "deploy": "npm run build && gcloud app deploy app.yaml --no-promote",
@@ -53,6 +57,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@litert-lm/core": "0.15.0",
     "@lit-labs/signals": "^0.1.3",
     "@lit/context": "^1.1.6",
     "@lit/localize": "^0.12.1",
