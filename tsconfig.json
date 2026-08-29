@@ -20,7 +20,8 @@
   },
   "include": [
     "src/**/*.ts",
-    "test/**/*.ts"
+    "test/**/*.ts",
+    "tools/m0-harness/**/*.ts"
   ],
   "exclude": [
     "node_modules"

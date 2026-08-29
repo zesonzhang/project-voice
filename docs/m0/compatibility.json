@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-27T04:57:00Z",
+  "frozenTuple": {
+    "app": "project-voice@0.0.1",
+    "runtime": "@litert-lm/core@0.15.0",
+    "model": "gemma-4-e2b-it-web@6b78abd019e61a1ca4cbe3b212d2c9ce8ff38a94",
+    "browserFamily": "stable desktop Chrome",
+    "backend": "WebGPU"
+  },
+  "environments": [
+    {
+      "os": "macOS 26.6.1 (25G76)",
+      "architecture": "arm64",
+      "device": "MacBookPro18,3",
+      "processor": "Apple M1 Pro, 8 CPU cores",
+      "gpu": "Apple M1 Pro, 14 GPU cores, Metal supported",
+      "ramClassGiB": 16,
+      "chromeVersion": "151.0.7922.174",
+      "status": "passed",
+      "completedChecks": [
+        "Candidate model byte size and full SHA-256 match the frozen record",
+        "TypeScript compilation",
+        "same-origin Worker and runtime bundling",
+        "local M0 route returns COOP and COEP headers",
+        "Wasm asset returns application/wasm",
+        "Jasmine browser tests in headless Chrome",
+        "Real LiteRT-LM WebGPU inference in stable Chrome",
+        "Eleven OPFS model loads with zero model-byte network requests, including five page reloads and one Chrome restart",
+        "One warm-up plus all six warm multilingual benchmark cases",
+        "Prefill and decode cancellation with zero stale renders",
+        "Engine deletion and recreation",
+        "All latency and main-thread responsiveness gates"
+      ],
+      "blockingReason": null,
+      "benchmarkResultFile": "docs/m0/results/macos-m1pro-chrome151.json"
+    },
+    {
+      "os": "Windows",
+      "status": "planned-post-development",
+      "blockingReason": "Deferred: validate during the post-development compatibility phase.",
+      "benchmarkResultFile": null
+    },
+    {
+      "os": "Linux",
+      "status": "planned-post-development",
+      "blockingReason": "Deferred: validate during the post-development compatibility phase.",
+      "benchmarkResultFile": null
+    }
+  ]
+}

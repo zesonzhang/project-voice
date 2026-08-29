@@ -12,9 +12,68 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import flask
 import pytest
 
 import main
+
+
+@pytest.fixture
+def m0_client():
+  previous = main.app.config['ENABLE_M0_HARNESS']
+  main.app.config['ENABLE_M0_HARNESS'] = True
+  try:
+    yield main.app.test_client()
+  finally:
+    main.app.config['ENABLE_M0_HARNESS'] = previous
+
+
+def test_m0_route_is_disabled_by_default():
+  previous = main.app.config['ENABLE_M0_HARNESS']
+  main.app.config['ENABLE_M0_HARNESS'] = False
+  try:
+    response = main.app.test_client().get('/m0')
+  finally:
+    main.app.config['ENABLE_M0_HARNESS'] = previous
+
+  assert response.status_code == 404
+
+
+def test_m0_route_is_cross_origin_isolated(m0_client):
+  response = m0_client.get('/m0')
+
+  assert response.status_code == 200
+  assert response.headers['Cross-Origin-Opener-Policy'] == 'same-origin'
+  assert response.headers['Cross-Origin-Embedder-Policy'] == 'require-corp'
+  assert b'/static/m0.js' in response.data
+  assert b'pattern="[a-z0-9\\-]+"' in response.data
+
+
+def test_m0_worker_is_cross_origin_isolated():
+  previous = main.app.config['ENABLE_M0_HARNESS']
+  main.app.config['ENABLE_M0_HARNESS'] = True
+  try:
+    with main.app.test_request_context('/static/m0-inference-worker.js'):
+      flask.g.request_id = 'test-request'
+      response = main.AddSecurityHeaders(flask.Response())
+  finally:
+    main.app.config['ENABLE_M0_HARNESS'] = previous
+
+  assert response.headers['Cross-Origin-Opener-Policy'] == 'same-origin'
+  assert response.headers['Cross-Origin-Embedder-Policy'] == 'require-corp'
+
+
+def test_m0_wasm_binary_is_cross_origin_isolated():
+  previous = main.app.config['ENABLE_M0_HARNESS']
+  main.app.config['ENABLE_M0_HARNESS'] = True
+  try:
+    with main.app.test_request_context('/static/litertlm_wasm_internal.wasm'):
+      flask.g.request_id = 'test-request'
+      response = main.AddSecurityHeaders(flask.Response())
+  finally:
+    main.app.config['ENABLE_M0_HARNESS'] = previous
+
+  assert response.headers['Cross-Origin-Embedder-Policy'] == 'require-corp'
 
 
 @pytest.mark.parametrize('path, expected_status', [
@@ -46,6 +105,20 @@ def test_csp_restricts_executable_resources_and_allows_required_connections():
   assert "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com" in csp
   assert "font-src 'self' https://fonts.gstatic.com" in csp
   assert response.headers['Cache-Control'] == 'no-store'
+
+
+def test_runtime_assets_are_self_hosted_and_present():
+  response = main.app.test_client().get('/')
+
+  assert b'https://fonts.googleapis.com' in response.data
+  assert b'https://fonts.gstatic.com' in response.data
+  assert b'crossorigin="anonymous"' in response.data
+  for path in (
+      '/static/inference-worker.js',
+      '/static/vendor/litert-lm/wasm/litertlm_wasm_internal.wasm',
+  ):
+    asset = main.app.test_client().get(path)
+    assert asset.status_code == 200, path
 
 
 def test_app_engine_static_handler_declares_isolation_and_csp():

@@ -35,7 +35,6 @@ for (const ignoredPath of [
   '/static/m0.js',
   '/static/m0-inference-worker.js',
   '/static/litertlm_wasm_*.wasm',
-  '/static/vendor/litert-lm/',
 ]) {
   if (!gcloudIgnore.split('\n').includes(ignoredPath)) {
     throw new Error(`.gcloudignore must exclude ${ignoredPath}`);
