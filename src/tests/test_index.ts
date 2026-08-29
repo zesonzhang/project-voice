@@ -30,6 +30,8 @@ import './test_model-manager.js';
 import './test_tab-coordinator.js';
 import './test_m3_runtime.js';
 import './test_m3_integration.js';
+import './test_m4_diagnostics.js';
+import './test_on_device_model_card.js';
 import './test_m4_privacy_network.js';
 import './test_m4_compatibility.js';
 import './test_m4_performance_soak.js';
