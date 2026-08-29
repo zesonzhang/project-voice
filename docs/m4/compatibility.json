@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "milestone": "M4.6",
+  "updatedAt": "2026-08-29T00:00:00Z",
+  "evidenceStatus": "missing",
+  "frozenTuple": {
+    "app": "project-voice@0.0.1",
+    "runtime": "@litert-lm/core@0.15.0",
+    "model": "gemma-4-e2b-it-web@6b78abd019e61a1ca4cbe3b212d2c9ce8ff38a94",
+    "browserFamily": "stable desktop Chrome >= 125",
+    "backend": "WebGPU"
+  },
+  "matrix": [
+    {"platformId": "macos-arm64-apple-silicon", "os": "macOS 14+", "architecture": "arm64", "deviceFamily": "Apple Silicon", "gpu": "Apple integrated GPU", "minRamClassGiB": 8, "recommendedRamClassGiB": 16, "chromeVersion": ">= 125.0.0.0", "intendedTier": "Tier 1 reference", "status": "pending-real-device-evidence"},
+    {"platformId": "macos-x64-intel-metal", "os": "macOS 14+", "architecture": "x64", "deviceFamily": "Intel Mac with discrete AMD GPU", "gpu": "AMD Radeon Pro", "minRamClassGiB": 16, "recommendedRamClassGiB": 16, "chromeVersion": ">= 125.0.0.0", "intendedTier": "Tier 2 candidate", "status": "pending-real-device-evidence"},
+    {"platformId": "windows-x64-nvidia-d3d12", "os": "Windows 11 23H2+", "architecture": "x64", "deviceFamily": "Desktop or laptop with NVIDIA RTX 3060+", "gpu": "NVIDIA D3D12", "minRamClassGiB": 8, "recommendedRamClassGiB": 16, "chromeVersion": ">= 125.0.0.0", "intendedTier": "Tier 1 reference", "status": "pending-real-device-evidence"},
+    {"platformId": "windows-x64-intel-d3d12", "os": "Windows 11 23H2+", "architecture": "x64", "deviceFamily": "Intel Iris Xe or Arc", "gpu": "Intel D3D12", "minRamClassGiB": 16, "recommendedRamClassGiB": 16, "chromeVersion": ">= 125.0.0.0", "intendedTier": "Tier 2 candidate", "status": "pending-real-device-evidence"},
+    {"platformId": "windows-x64-amd-d3d12", "os": "Windows 11 23H2+", "architecture": "x64", "deviceFamily": "Desktop or laptop with AMD RX 6600+", "gpu": "AMD D3D12", "minRamClassGiB": 8, "recommendedRamClassGiB": 16, "chromeVersion": ">= 125.0.0.0", "intendedTier": "Tier 1 reference", "status": "pending-real-device-evidence"},
+    {"platformId": "linux-x64-vulkan-mesa", "os": "Ubuntu 22.04/24.04 or equivalent", "architecture": "x64", "deviceFamily": "Linux workstation", "gpu": "Vulkan-capable AMD, Intel, or NVIDIA GPU", "minRamClassGiB": 8, "recommendedRamClassGiB": 16, "chromeVersion": ">= 125.0.0.0", "intendedTier": "Tier 2 candidate", "status": "pending-real-device-evidence"}
+  ],
+  "unsupportedConfigurations": [
+    {"condition": "Chrome without WebGPU support or with a fallback adapter", "behavior": "Preflight fails and Local activation is blocked without cloud fallback.", "stableErrorCode": "ERR_WEBGPU_UNSUPPORTED"},
+    {"condition": "Cross-origin isolation is unavailable", "behavior": "Preflight fails before model download or load.", "stableErrorCode": "ERR_WEBGPU_UNSUPPORTED"},
+    {"condition": "Available storage is below the manifest requirement or 20% headroom", "behavior": "Download is blocked and the existing active version is retained.", "stableErrorCode": "ERR_INSUFFICIENT_STORAGE"},
+    {"condition": "Device memory is below the manifest recommendation", "behavior": "A warning is displayed; real-device qualification remains required.", "stableErrorCode": null},
+    {"condition": "WebGPU device loss", "behavior": "The Worker cancels generation, disposes the engine, and reports a recoverable load error.", "stableErrorCode": "ERR_LOAD_FAILED"}
+  ]
+}

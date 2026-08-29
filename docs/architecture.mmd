@@ -1,0 +1,138 @@
+flowchart TB
+    %% Styling and color scheme
+    classDef onDeviceLocal fill:#E6F4EA,stroke:#1E8E3E,stroke-width:2.5px,color:#0D652D;
+    classDef onDevicePromptAPI fill:#E6F4EA,stroke:#1E8E3E,stroke-width:2.5px,stroke-dasharray: 4 4,color:#0D652D;
+    classDef existingComp fill:#F1F3F4,stroke:#5F6368,stroke-width:1.5px,color:#202124;
+    classDef routerComp fill:#FEF7E0,stroke:#F9AB00,stroke-width:2px,color:#B06000;
+    classDef backendSupport fill:#E8F0FE,stroke:#1A73E8,stroke-width:1.5px,color:#174EA6;
+    classDef cloudExternal fill:#F8F9FA,stroke:#4285F4,stroke-width:1.5px,color:#1967D2;
+
+    %% ============================================================
+    %% 1. Client Environment (Desktop Chrome)
+    %% ============================================================
+    subgraph Client ["<b>Client: Desktop Chrome Browser</b>"]
+
+        %% UI & Configuration Layer
+        subgraph Sub_UI ["UI & State Layer (Lit Web Components)"]
+            PVApp["<b>pv-app (Main App UI)</b><br/>• Collects text/speech input & context<br/>• Triple-gate monotonic sequence tagging<br/>• Displays word & sentence suggestions"]:::existingComp
+            SettingsPanel["<b>SettingsPanel (Container)</b><br/>• Mode toggle: Cloud / Custom / Prompt API<br/>• Telemetry metrics & diagnostics export"]:::existingComp
+            ModelCard["<b>pv-on-device-model-card</b><br/>• Standalone model card element<br/>• Lifecycle actions, progress & dialogs"]:::onDeviceLocal
+            UIUtils["<b>ui-utils & card-template</b><br/>• Pure formatting & Lit HTML templates"]:::onDeviceLocal
+            LocalStorage["<b>localStorage (Config Storage)</b><br/>• Persists user inferenceMode setting"]:::existingComp
+            FeatureFlags["<b>FeatureFlagsManager</b><br/>• Rollout cohort evaluation & kill-switch"]:::onDeviceLocal
+            Diagnostics["<b>DiagnosticsExporter</b><br/>• Sanitized JSON telemetry export"]:::onDeviceLocal
+        end
+
+        %% Routing Layer
+        subgraph Sub_Routing ["Inference Dispatch Layer"]
+            ProviderRouter["<b>SuggestionProviderRouter</b><br/>• Routes requests by selected inferenceMode<br/>• Enforces strictly NO automatic silent fallback"]:::routerComp
+        end
+
+        %% Path 1: Cloud Client Path (Existing)
+        subgraph Sub_CloudClient ["Cloud Inference Path (Existing)"]
+            CloudProvider["<b>CloudSuggestionProvider / MacroApiClient</b><br/>• Formats suggestion requests<br/>• Sends HTTP POST to /run-macro"]:::existingComp
+        end
+
+        %% Shared Prompt Rendering (Local)
+        subgraph Sub_PromptShared ["<b>Local Prompt Engine (Green)</b>"]
+            PromptRenderer["<b>Browser Prompt Renderer</b><br/>• In-browser Jinja2 template renderer<br/>• Renders bundled .jinja2 prompt sources<br/>• Ensures strict parity with backend prompts"]:::onDeviceLocal
+        end
+
+        %% Path 2: On-Device Custom Model Path (LiteRT-LM + WebGPU)
+        subgraph Sub_LocalCustom ["<b>On-Device Custom Model Path (LiteRT-LM / WebGPU - Green)</b>"]
+            LocalCustomProvider["<b>LocalSuggestionProvider (Custom)</b><br/>• Orchestrates local word & sentence runs<br/>• Serializes requests (words first, then sentences)<br/>• Preempts stale runs on newer input"]:::onDeviceLocal
+            SuggestionParser["<b>SuggestionParser</b><br/>• Extracted response parser & normalizer<br/>• Japanese text & whitespace cleanup"]:::onDeviceLocal
+
+            subgraph Sub_ModelServices ["<b>Model Lifecycle Domain Services</b>"]
+                ModelManager["<b>ModelManager (Lifecycle Coordinator)</b><br/>• 10-state machine orchestrator & facade<br/>• Automatic model load, update & safe rollback"]:::onDeviceLocal
+                ModelCapabilities["<b>ModelCapabilities</b><br/>• Hardware, WebGPU & storage preflights<br/>• Quota headroom verification (+20%)"]:::onDeviceLocal
+                ModelDownloader["<b>ModelDownloader</b><br/>• Resumable HTTP Range chunk streaming<br/>• Signed URL caching & 403 token refresh"]:::onDeviceLocal
+                ModelImporter["<b>ModelImporter</b><br/>• File-picker streaming import (.litertlm)<br/>• Chunked SHA-256 calculation"]:::onDeviceLocal
+            end
+
+            subgraph Sub_Worker ["<b>Inference Web Worker (Dedicated Background Thread)</b>"]
+                InferenceWorker["<b>Inference Web Worker</b><br/>• Offloads heavy compute to keep UI responsive<br/>• Self-hosted Wasm / Worker assets (/static/vendor/)"]:::onDeviceLocal
+                RuntimeAdapter["<b>ModelRuntimeAdapter (LiteRT-LM Adapter)</b><br/>• Tokenizer encoding & decoding<br/>• KV Cache memory management<br/>• Autoregressive decoding & sampling control"]:::onDeviceLocal
+                ComputeEngine["<b>LiteRT-LM Core + WebGPU</b><br/>• Dispatches tensor operations to local GPU<br/>• Executes certified Gemma model (.litertlm)"]:::onDeviceLocal
+            end
+
+            subgraph Sub_Storage ["<b>Custom Model Persistence (OPFS / IndexedDB)</b>"]
+                OPFS["<b>OPFS (Origin Private File System)</b><br/>• Stores downloaded weights (.litertlm)<br/>• Retains partial download chunks (.partial)"]:::onDeviceLocal
+                IndexedDB["<b>IndexedDB (Metadata Repository)</b><br/>• Stores model manifests & active versions<br/>• Records SHA-256 checksums & offsets"]:::onDeviceLocal
+            end
+        end
+
+        %% Path 3: On-Device Built-in AI Path (Chrome Prompt API - Future / Green)
+        subgraph Sub_LocalBuiltIn ["<b>On-Device Built-in AI Path (Chrome Prompt API - Future / Green)</b>"]
+            PromptApiProvider["<b>ChromePromptApiSuggestionProvider</b><br/>• Implements SuggestionProvider interface<br/>• Creates LanguageModel sessions with streaming<br/>• Zero app download/storage orchestration required"]:::onDevicePromptAPI
+            ChromeBuiltInAI["<b>Chrome Built-in AI (LanguageModel API)</b><br/>• Standardized browser API (window.ai.languageModel)<br/>• Built-in Gemini Nano managed by browser/OS<br/>• Automatic hardware acceleration & memory management"]:::onDevicePromptAPI
+        end
+    end
+
+    %% ============================================================
+    %% 2. Backend & Cloud Infrastructure
+    %% ============================================================
+    subgraph CloudBackend ["<b>Backend & Cloud Infrastructure</b>"]
+
+        %% Python / Flask Backend (App Engine)
+        subgraph Sub_Flask ["Python / Flask Backend (App Engine)"]
+            MacroAPI["<b>/run-macro API</b><br/>• Renders prompts via Jinja in Python<br/>• Proxies requests to Gemini API"]:::existingComp
+            CatalogAPI["<b>/api/on-device-models/default</b><br/>• Serves default model manifest<br/>• Provides version, SHA-256 & hardware requirements"]:::backendSupport
+            SignedUrlAPI["<b>/api/on-device-models/.../download-url</b><br/>• Rate-limited session + CSRF authentication<br/>• Binds to immutable GCS generation"]:::backendSupport
+            FeaturesAPI["<b>/api/features</b><br/>• Rollout cohort flags & kill-switch controls"]:::backendSupport
+        end
+
+        %% Cloud Services & Storage
+        subgraph Sub_CloudInfra ["Cloud Services & Storage"]
+            GeminiAPI["<b>Gemini API</b><br/>• Google-hosted Cloud LLM service"]:::cloudExternal
+            GCSBucket["<b>Private GCS Bucket</b><br/>• Private bucket hosting immutable model weights<br/>• Direct browser Range resume downloads via signed URL"]:::backendSupport
+        end
+    end
+
+    %% ============================================================
+    %% 3. Relationships & Interactions
+    %% ============================================================
+
+    %% UI & Control Links
+    PVApp -->|"Initiates suggestion request"| ProviderRouter
+    SettingsPanel -->|"Hosts standalone card"| ModelCard
+    ModelCard -->|"Uses formatting & templates"| UIUtils
+    SettingsPanel -->|"Saves mode setting"| LocalStorage
+    LocalStorage -.->|"Reads active mode"| ProviderRouter
+    ModelCard -->|"Commands lifecycle"| ModelManager
+    SettingsPanel -->|"Triggers export"| Diagnostics
+    SettingsPanel -.->|"Checks availability"| ChromeBuiltInAI
+    FeatureFlags -->|"Syncs rollout config"| FeaturesAPI
+
+    %% Routing Decisions (3-Way Dispatch)
+    ProviderRouter -->|"Mode = Cloud"| CloudProvider
+    ProviderRouter -->|"Mode = On-device Custom"| LocalCustomProvider
+    ProviderRouter -->|"Mode = Chrome Prompt API"| PromptApiProvider
+
+    %% Path 1: Cloud Flow
+    CloudProvider -->|"HTTP POST"| MacroAPI
+    MacroAPI -->|"Calls remote LLM"| GeminiAPI
+
+    %% Path 2: Custom Local Model Flow (LiteRT-LM)
+    LocalCustomProvider -->|"Renders prompt"| PromptRenderer
+    LocalCustomProvider -->|"Worker messaging"| InferenceWorker
+    LocalCustomProvider -->|"Normalizes & parses output"| SuggestionParser
+    InferenceWorker -->|"Invokes adapter"| RuntimeAdapter
+    RuntimeAdapter -->|"Schedules compute"| ComputeEngine
+
+    %% Manager Domain Delegations
+    ModelManager -->|"Capability preflight"| ModelCapabilities
+    ModelManager -->|"Delegates download"| ModelDownloader
+    ModelManager -->|"Delegates file import"| ModelImporter
+    ModelDownloader -->|"Fetches signed URL"| SignedUrlAPI
+    ModelDownloader -->|"Direct Range download"| GCSBucket
+    ModelDownloader -->|"Streams chunks"| OPFS
+    ModelImporter -->|"Streams local file"| OPFS
+    ModelManager -->|"Fetches catalog"| CatalogAPI
+    ModelManager -->|"Records metadata"| IndexedDB
+    ModelManager -->|"Commands load/unload"| InferenceWorker
+    InferenceWorker -->|"Streams model weights"| OPFS
+
+    %% Path 3: Built-in Chrome Prompt API Flow
+    PromptApiProvider -->|"Renders prompt / system prompt"| PromptRenderer
+    PromptApiProvider -->|"LanguageModel.create & promptStreaming"| ChromeBuiltInAI

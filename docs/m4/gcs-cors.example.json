@@ -1,0 +1,19 @@
+[
+  {
+    "origin": [
+      "https://PRODUCTION_ORIGIN",
+      "https://STAGING_ORIGIN",
+      "http://localhost:5000"
+    ],
+    "method": ["GET", "HEAD"],
+    "responseHeader": [
+      "Range",
+      "Content-Range",
+      "Content-Length",
+      "ETag",
+      "Accept-Ranges",
+      "x-goog-generation"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]
