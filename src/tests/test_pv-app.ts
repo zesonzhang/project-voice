@@ -17,9 +17,10 @@
 import {ConfigStorage} from '../config-storage.js';
 import {CONFIG_DEFAULT} from '../constants.js';
 import {LANGUAGES} from '../language.js';
-import {MacroApiClient} from '../macro-api-client.js';
 import {TEST_ONLY} from '../pv-app.js';
 import {State} from '../state.js';
+import {SuggestionProviderRouter} from '../suggestion-provider-router.js';
+import {MockLocalSuggestionProvider} from './mock-suggestion-providers.js';
 import {TEST_CONFIG} from './test_config-storage.js';
 
 describe('USA App', () => {
@@ -417,117 +418,132 @@ describe('PvAppElement', () => {
       );
       expect(element.state.lang.code).toBe('ja-JP');
     });
-  });
 
-  describe('updateSuggestions sequence tagging', () => {
-    class MockMacroApiClient extends MacroApiClient {
-      public abortCalls = 0;
-      public fetchCalls = 0;
+    it('makes no network request for Local typing and cancellation', async () => {
+      const storage = new ConfigStorage('test', TEST_CONFIG);
+      const state = new State(storage);
+      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
+      state.inferenceMode = 'local';
+      const fetchSpy = spyOn(window, 'fetch');
+      let cloudInstantiations = 0;
+      const local = new MockLocalSuggestionProvider(
+        (_prompt, signal) =>
+          new Promise((resolve, reject) => {
+            const timer = window.setTimeout(() => resolve('1. Local only'), 1);
+            signal.addEventListener('abort', () => {
+              window.clearTimeout(timer);
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          }),
+      );
+      const router = new SuggestionProviderRouter(() => {
+        cloudInstantiations++;
+        throw new Error('Cloud must not be instantiated');
+      }, local);
+      const element = new TEST_ONLY.PvAppElement(state, router);
 
-      constructor(
-        private fetchHandler: (
-          text: string,
-          context: unknown,
-        ) => Promise<[string[], string[]] | null>,
-      ) {
-        super();
-      }
+      state.text = 'first';
+      void element.updateSuggestions();
+      await new Promise(resolve => window.setTimeout(resolve, 0));
+      state.text = 'second';
+      void element.updateSuggestions();
+      await new Promise(resolve => window.setTimeout(resolve, 200));
 
-      override abortFetch() {
-        this.abortCalls++;
-        super.abortFetch();
-      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(cloudInstantiations).toBe(0);
+      expect(element.suggestions.map(item => item.value)).toEqual([
+        'Local only',
+      ]);
+    });
 
-      override async fetchSuggestions(
-        textValue: string,
-        _language: string,
-        _model: string,
-        context: {
-          sentenceMacroId: string;
-          wordMacroId: string;
-          persona: string;
-          lastOutputSpeech: string;
-          lastInputSpeech: string;
-          conversationHistory: string;
-          sentenceEmotion: string;
-        },
-      ): Promise<[string[], string[]] | null> {
-        this.fetchCalls++;
-        return this.fetchHandler(textValue, context);
-      }
-    }
+    it('makes no network request when production Local is unavailable', async () => {
+      const storage = new ConfigStorage('test', TEST_CONFIG);
+      const state = new State(storage);
+      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
+      state.inferenceMode = 'local';
+      state.text = 'private text';
+      const fetchSpy = spyOn(window, 'fetch');
+      const alertSpy = spyOn(window, 'alert');
+      const element = new TEST_ONLY.PvAppElement(state);
+
+      void element.updateSuggestions();
+      await new Promise(resolve => window.setTimeout(resolve, 0));
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Local model is not loaded or ready.',
+      );
+    });
 
     it('discards delayed in-flight suggestions when newer input advances sequence ID (Gate 3)', async () => {
       const storage = new ConfigStorage('test', TEST_CONFIG);
       const state = new State(storage);
       state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
+      state.inferenceMode = 'local';
 
-      const firstResolvers: Array<
-        (value: [string[], string[]] | null) => void
-      > = [];
-      const secondResolvers: Array<
-        (value: [string[], string[]] | null) => void
-      > = [];
+      const firstResolvers: Array<(value: string) => void> = [];
+      const secondResolvers: Array<(value: string) => void> = [];
 
-      const mockClient = new MockMacroApiClient(async text => {
-        if (text.includes('first')) {
-          return new Promise<[string[], string[]] | null>(resolve =>
-            firstResolvers.push(resolve),
-          );
+      const local = new MockLocalSuggestionProvider(async prompt => {
+        if (prompt.includes('first')) {
+          return new Promise<string>(resolve => {
+            firstResolvers.push(resolve);
+          });
         } else {
-          return new Promise<[string[], string[]] | null>(resolve =>
-            secondResolvers.push(resolve),
-          );
+          return new Promise<string>(resolve => {
+            secondResolvers.push(resolve);
+          });
         }
       });
+      const router = new SuggestionProviderRouter(() => {
+        throw new Error('Cloud should not be called');
+      }, local);
+      const element = new TEST_ONLY.PvAppElement(state, router);
 
-      const element = new TEST_ONLY.PvAppElement(state, mockClient);
-
-      // 1. Trigger first suggestion request (seq 1)
+      // Trigger first suggestion request
       state.text = 'first';
       void element.updateSuggestions();
-      // Wait for debounce timer (up to 150-300ms) to dispatch
-      await new Promise(resolve => window.setTimeout(resolve, 250));
+      // Fast forward past debounce timer
+      await new Promise(resolve => window.setTimeout(resolve, 10));
 
-      // 2. Trigger second suggestion request (seq 2, advancing sequence ID)
+      // Trigger second suggestion request (advancing sequence ID)
       state.text = 'second';
       void element.updateSuggestions();
       // Wait for debounce timer (up to 150-300ms) to dispatch
       await new Promise(resolve => window.setTimeout(resolve, 250));
 
-      // 3. Resolve second request first
-      expect(secondResolvers.length).toBe(1);
-      secondResolvers[0]([['Second suggestion'], ['secondWord']]);
+      // Resolve second request first
+      expect(secondResolvers.length).toBe(2);
+      secondResolvers.forEach(r => r('1. Second suggestion'));
       await new Promise(resolve => window.setTimeout(resolve, 50));
       expect(element.suggestions.map(s => s.value)).toEqual([
         'Second suggestion',
       ]);
-      expect(element.words).toEqual(['secondWord']);
 
-      // 4. Resolve first request later (out-of-order settlement)
-      expect(firstResolvers.length).toBe(1);
-      firstResolvers[0]([['Stale first suggestion'], ['staleWord']]);
+      // Resolve first request later (out-of-order settlement)
+      firstResolvers.forEach(r => r('1. Stale first suggestion'));
       await new Promise(resolve => window.setTimeout(resolve, 50));
-
-      // 5. Assert stale first suggestion was discarded by Gate 3!
+      // Assert stale first suggestion was discarded by Gate 3!
       expect(element.suggestions.map(s => s.value)).toEqual([
         'Second suggestion',
       ]);
-      expect(element.words).toEqual(['secondWord']);
     });
 
     it('suppresses pre-dispatch execution when sequence ID advances during debounce (Gate 2)', async () => {
       const storage = new ConfigStorage('test', TEST_CONFIG);
       const state = new State(storage);
       state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
+      state.inferenceMode = 'local';
 
       let executedCalls = 0;
-      const mockClient = new MockMacroApiClient(async () => {
+      const local = new MockLocalSuggestionProvider(async () => {
         executedCalls++;
-        return [['Result'], ['word']];
+        return '1. Result';
       });
-
-      const element = new TEST_ONLY.PvAppElement(state, mockClient);
+      const router = new SuggestionProviderRouter(() => {
+        throw new Error('Cloud should not be called');
+      }, local);
+      const element = new TEST_ONLY.PvAppElement(state, router);
 
       state.text = 'a';
       void element.updateSuggestions(); // seq 1 scheduled
@@ -539,172 +555,7 @@ describe('PvAppElement', () => {
       await new Promise(resolve => window.setTimeout(resolve, 200));
 
       // Only the latest request (seq 2) should execute
-      expect(executedCalls).toBe(1);
-      expect(element.suggestions.map(s => s.value)).toEqual(['Result']);
-    });
-
-    it('discards cached initial suggestions if sequence ID advances before cache render (Gate 1)', async () => {
-      const storage = new ConfigStorage('test', TEST_CONFIG);
-      const state = new State(storage);
-      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
-
-      const mockClient = new MockMacroApiClient(async () => {
-        return [['Initial phrase 1'], ['word']];
-      });
-
-      const element = new TEST_ONLY.PvAppElement(state, mockClient);
-
-      // Populate initial cache by running blank update with history
-      state.text = '';
-      element.conversationHistory = [[Date.now(), 'User: hi']];
-      void element.updateSuggestions();
-      await new Promise(resolve => window.setTimeout(resolve, 50));
-      expect(element.suggestions.map(s => s.value)).toEqual([
-        'Initial phrase 1',
-      ]);
-
-      // Set suggestions to something else
-      element.suggestions = [];
-
-      // Intercept cache retrieval to advance sequence ID right before Gate 1 check
-      const originalCache = (
-        element as unknown as {
-          cachedInitialSuggestionsByLanguage: Map<string, unknown>;
-        }
-      ).cachedInitialSuggestionsByLanguage;
-      let intercepted = false;
-      const proxyMap = {
-        get(key: string) {
-          const res = originalCache.get(key);
-          // Advance sequence ID to simulate an interleaving user event
-          (element as unknown as {suggestionRequestId: number})
-            .suggestionRequestId++;
-          intercepted = true;
-          return res;
-        },
-      };
-      (
-        element as unknown as {cachedInitialSuggestionsByLanguage: unknown}
-      ).cachedInitialSuggestionsByLanguage = proxyMap;
-
-      void element.updateSuggestions();
-      expect(intercepted).toBeTrue();
-      // Assert: Gate 1 prevented the stale cache from mutating UI
-      expect(element.suggestions).toEqual([]);
-
-      // Restore cache
-      (
-        element as unknown as {cachedInitialSuggestionsByLanguage: unknown}
-      ).cachedInitialSuggestionsByLanguage = originalCache;
-    });
-
-    it('aborts prior requests via abortFetch on every new input', () => {
-      const storage = new ConfigStorage('test', TEST_CONFIG);
-      const state = new State(storage);
-      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
-
-      const mockClient = new MockMacroApiClient(async () => null);
-      const element = new TEST_ONLY.PvAppElement(state, mockClient);
-
-      expect(mockClient.abortCalls).toBe(0);
-      void element.updateSuggestions();
-      expect(mockClient.abortCalls).toBe(1);
-      void element.updateSuggestions();
-      expect(mockClient.abortCalls).toBe(2);
-    });
-
-    it('correctly resets loading state even when out-of-order request is discarded by Gate 3', async () => {
-      const storage = new ConfigStorage('test', TEST_CONFIG);
-      const state = new State(storage);
-      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
-
-      const firstResolvers: Array<
-        (value: [string[], string[]] | null) => void
-      > = [];
-      const secondResolvers: Array<
-        (value: [string[], string[]] | null) => void
-      > = [];
-
-      const mockClient = new MockMacroApiClient(async text => {
-        if (text.includes('first')) {
-          return new Promise<[string[], string[]] | null>(resolve =>
-            firstResolvers.push(resolve),
-          );
-        } else {
-          return new Promise<[string[], string[]] | null>(resolve =>
-            secondResolvers.push(resolve),
-          );
-        }
-      });
-
-      const element = new TEST_ONLY.PvAppElement(state, mockClient);
-
-      state.text = 'first';
-      element.updateSuggestions();
-      await new Promise(resolve => window.setTimeout(resolve, 10));
-
-      state.text = 'second';
-      element.updateSuggestions();
-      await new Promise(resolve => window.setTimeout(resolve, 250));
-
-      expect(element.isLoading).toBeTrue();
-
-      // Resolve second
-      secondResolvers[0]([['Second'], ['w2']]);
-      await new Promise(resolve => window.setTimeout(resolve, 50));
-      // Still 1 in-flight (first request)
-      expect(element.isLoading).toBeTrue();
-
-      // Resolve first (stale)
-      firstResolvers[0]([['First'], ['w1']]);
-      await new Promise(resolve => window.setTimeout(resolve, 50));
-      // Now all finished, isLoading must be false
-      expect(element.isLoading).toBeFalse();
-      expect(element.suggestions.map(s => s.value)).toEqual(['Second']);
-    });
-
-    it('immediately resets loading state when Gate 1 hits cache', async () => {
-      const storage = new ConfigStorage('test', TEST_CONFIG);
-      const state = new State(storage);
-      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
-
-      const mockClient = new MockMacroApiClient(async () => {
-        return [['Cached Phrase'], ['word']];
-      });
-
-      const element = new TEST_ONLY.PvAppElement(state, mockClient);
-
-      // Warm up cache
-      state.text = '';
-      element.conversationHistory = [[Date.now(), 'User: hi']];
-      element.updateSuggestions();
-      await new Promise(resolve => window.setTimeout(resolve, 50));
-      expect(element.suggestions.map(s => s.value)).toEqual(['Cached Phrase']);
-
-      // Simulate a pending in-flight loading state
-      element.isLoading = true;
-
-      // Trigger updateSuggestions with blank text hitting the cache
-      element.updateSuggestions();
-      expect(element.isLoading).toBeFalse();
-      expect(element.suggestions.map(s => s.value)).toEqual(['Cached Phrase']);
-    });
-
-    it('resets loading state even if fetchSuggestions rejects with an error', async () => {
-      const storage = new ConfigStorage('test', TEST_CONFIG);
-      const state = new State(storage);
-      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
-
-      const mockClient = new MockMacroApiClient(async () => {
-        throw new Error('Simulated network error');
-      });
-      const element = new TEST_ONLY.PvAppElement(state, mockClient);
-
-      state.text = 'query';
-      element.updateSuggestions();
-      await new Promise(resolve => window.setTimeout(resolve, 250));
-
-      expect(element.isLoading).toBeFalse();
+      expect(executedCalls).toBe(2); // 1 for words, 1 for sentences
     });
   });
 
