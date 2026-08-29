@@ -25,14 +25,16 @@ import '@material/web/textfield/filled-text-field.js';
 import '@material/web/select/outlined-select.js';
 import '@material/web/dialog/dialog.js';
 import '@material/web/slider/slider.js';
+import './pv-on-device-model-card.js';
 
 import {localized, msg} from '@lit/localize';
 import {SignalWatcher} from '@lit-labs/signals';
 import {MdTabs} from '@material/web/tabs/tabs.js';
 import {css, html, LitElement} from 'lit';
-import {customElement, property, query} from 'lit/decorators.js';
+import {customElement, property, query, state} from 'lit/decorators.js';
 
 import {LANGUAGES} from './language.js';
+import {ModelManager} from './on-device/model-manager.js';
 import {State} from './state.js';
 
 const EVENT_KEY = {
@@ -45,7 +47,16 @@ type EventKey = (typeof EVENT_KEY)[keyof typeof EVENT_KEY];
 @customElement('pv-setting-panel')
 export class PvSettingPanel extends SignalWatcher(LitElement) {
   @property({type: Object})
-  private state!: State;
+  state!: State;
+
+  @property({type: Object})
+  modelManager?: ModelManager;
+
+  @property({type: Boolean})
+  enableDebugModelImport = false;
+
+  @property({type: Boolean})
+  localActivationAllowed = false;
 
   static styles = css`
     :host {
@@ -60,10 +71,11 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
       --mdc-typography-body2-line-height: 3.5rem;
     }
 
-    /* Optimized only for iPad. May need to improve. */
     #form-id {
-      height: 440px;
-      width: 500px;
+      box-sizing: border-box;
+      max-height: min(70vh, 520px);
+      overflow-y: auto;
+      width: min(80vw, 560px);
     }
 
     .voice-config-slider {
@@ -111,14 +123,21 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     .pv-initial-phrase-text-field {
       width: 100%;
     }
-
   `;
 
   @property({type: Number, reflect: true})
   private activeSettingsTabIndex = 0;
 
-  @query('md-dialog')
+  @query('#settings-dialog')
   private settingsDialog?: HTMLDialogElement;
+
+  @query('#remove-model-dialog')
+  private removeModelDialog?: HTMLDialogElement;
+
+  @state()
+  private showRemoveConfirm = false;
+
+  private removeTrigger: HTMLElement | null = null;
 
   show() {
     this.settingsDialog?.show();
@@ -132,6 +151,38 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
         composed: true,
       }),
     );
+  }
+
+  private async onInferenceModeChange(mode: 'cloud' | 'local') {
+    if (
+      mode === 'local' &&
+      this.state.inferenceMode !== 'local' &&
+      !this.localActivationAllowed
+    ) {
+      return;
+    }
+    this.state.inferenceMode = mode;
+    if (mode === 'local') await this.modelManager?.startup(true);
+  }
+
+  private onRequestModelRemoval(event: CustomEvent<{trigger: HTMLElement}>) {
+    this.removeTrigger = event.detail.trigger;
+    this.showRemoveConfirm = true;
+  }
+
+  private onRemoveDialogClosed() {
+    this.showRemoveConfirm = false;
+    this.removeTrigger?.focus();
+    this.removeTrigger = null;
+  }
+
+  private async executeRemoveModel() {
+    this.showRemoveConfirm = false;
+    const manifest = this.modelManager?.getActiveManifest();
+    if (manifest) {
+      await this.modelManager?.removeModel(manifest.modelId, manifest.version);
+    }
+    this.removeModelDialog?.close();
   }
 
   render() {
@@ -179,26 +230,75 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     const generalSettingsPanelTemplate = html`
       <div class="form-section">
         <md-outlined-select
-          label="${msg('AI')}"
+          label="${msg('Inference Source')}"
           @change=${(e: Event) => {
-            const selected = e.composedPath()[0];
-            this.state.aiConfig = (selected as HTMLSelectElement).value;
+            const selected = e.composedPath()[0] as HTMLSelectElement;
+            void this.onInferenceModeChange(
+              selected.value as 'cloud' | 'local',
+            );
           }}
         >
           <md-select-option
-            ?selected="${this.state.aiConfig === 'gemini_3_1_flash_lite'}"
-            value="gemini_3_1_flash_lite"
+            ?selected="${this.state.inferenceMode === 'cloud'}"
+            value="cloud"
           >
-            <div slot="headline">Gemini 3.1 Flash Lite</div>
+            <div slot="headline">${msg('Cloud (Gemini)')}</div>
           </md-select-option>
           <md-select-option
-            ?selected="${this.state.aiConfig === 'gemini_3_flash'}"
-            value="gemini_3_flash"
+            ?disabled=${!this.localActivationAllowed &&
+            this.state.inferenceMode !== 'local'}
+            ?selected="${this.state.inferenceMode === 'local'}"
+            title=${!this.localActivationAllowed &&
+            this.state.inferenceMode !== 'local'
+              ? msg('On-device activation is not available for this rollout.')
+              : ''}
+            value="local"
           >
-            <div slot="headline">Gemini 3 Flash Preview</div>
+            <div slot="headline">${msg('On-device')}</div>
           </md-select-option>
         </md-outlined-select>
+        ${!this.localActivationAllowed && this.state.inferenceMode !== 'local'
+          ? html`<div role="status" aria-live="polite">
+              ${msg('On-device activation is not available for this rollout.')}
+            </div>`
+          : ''}
       </div>
+      ${this.state.inferenceMode === 'cloud'
+        ? html`
+            <div class="form-section">
+              <md-outlined-select
+                label="${msg('Cloud AI Model')}"
+                @change=${(e: Event) => {
+                  const selected = e.composedPath()[0] as HTMLSelectElement;
+                  this.state.aiConfig = selected.value;
+                }}
+              >
+                <md-select-option
+                  ?selected="${this.state.aiConfig === 'gemini_3_1_flash_lite'}"
+                  value="gemini_3_1_flash_lite"
+                >
+                  <div slot="headline">Gemini 3.1 Flash Lite</div>
+                </md-select-option>
+                <md-select-option
+                  ?selected="${this.state.aiConfig === 'gemini_3_flash'}"
+                  value="gemini_3_flash"
+                >
+                  <div slot="headline">Gemini 3 Flash Preview</div>
+                </md-select-option>
+              </md-outlined-select>
+            </div>
+          `
+        : html`
+            <pv-on-device-model-card
+              .modelManager=${this.modelManager}
+              .enableDebugModelImport=${this.enableDebugModelImport}
+              .allowModelInstallation=${this.localActivationAllowed}
+              @switch-to-cloud=${() => void this.onInferenceModeChange('cloud')}
+              @request-model-removal=${(
+                event: CustomEvent<{trigger: HTMLElement}>,
+              ) => this.onRequestModelRemoval(event)}
+            ></pv-on-device-model-card>
+          `}
       <div class="form-section-columns">
         <div class="form-section-column">
           <div class="form-section">
@@ -236,9 +336,7 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
             </label>
           </div>
         </div>
-        <div class="form-section-column">
-
-        </div>
+        <div class="form-section-column"></div>
       </div>
       <div class="form-section">
         <div>
@@ -307,11 +405,8 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
                   <div slot="headline">${voice.name}</div>
                 </md-select-option>`,
             )}
-
-
         </md-outlined-select>
       </div>
-
 
       <div class="form-section">
         <label>
@@ -365,7 +460,7 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     ];
 
     return html`
-      <md-dialog>
+      <md-dialog id="settings-dialog">
         <form slot="content" id="form-id" method="dialog">
           <md-tabs
             @change="${(e: Event) => {
@@ -396,6 +491,31 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
             }}"
             >OK</md-text-button
           >
+        </div>
+      </md-dialog>
+      <md-dialog
+        id="remove-model-dialog"
+        role="alertdialog"
+        aria-labelledby="remove-model-headline"
+        aria-describedby="remove-model-content"
+        .open=${this.showRemoveConfirm}
+        @closed=${this.onRemoveDialogClosed}
+      >
+        <div slot="headline" id="remove-model-headline">
+          ${msg('Remove Local Model?')}
+        </div>
+        <div slot="content" id="remove-model-content">
+          ${msg(
+            'This will delete the downloaded model weights from your device and free storage space. You can download it again at any time.',
+          )}
+        </div>
+        <div slot="actions">
+          <md-text-button @click=${() => this.removeModelDialog?.close()}>
+            ${msg('Cancel')}
+          </md-text-button>
+          <md-filled-button @click=${this.executeRemoveModel}>
+            ${msg('Remove Model')}
+          </md-filled-button>
         </div>
       </md-dialog>
     `;

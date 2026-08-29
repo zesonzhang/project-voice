@@ -43,6 +43,10 @@ import {AudioManager} from './audio-manager.js';
 import {CloudSuggestionProvider} from './cloud-suggestion-provider.js';
 import {ConfigStorage} from './config-storage.js';
 import {CONFIG_DEFAULT, LARGE_MARGIN_LINE_LIMIT} from './constants.js';
+import {
+  FeatureFlagsManager,
+  resolveSafeInferenceMode,
+} from './feature-flags.js';
 import {InputSource, InputSourceKind} from './input-history.js';
 import {
   SMALL_KANA_TRIGGER,
@@ -416,6 +420,8 @@ export class PvAppElement extends SignalWatcher(LitElement) {
 
   @property({type: Boolean, attribute: 'feature-enable-local-model-import'})
   private featureEnableLocalModelImport = false;
+  private localActivationAllowed = false;
+  private readonly featureFlags = new FeatureFlagsManager();
 
   @query('pv-sentence-type-selector')
   private sentenceTypeSelector?: PvSentenceTypeSelectorElement;
@@ -469,6 +475,32 @@ export class PvAppElement extends SignalWatcher(LitElement) {
     this.stateInternal.updateInitialPhrasesForCurrentLanguage();
 
     this.emotions = this.stateInternal.lang.emotions;
+
+    void this.featureFlags.fetchFlags().then(async flags => {
+      this.featureEnableLocalModelImport = flags.debugModelImport;
+      const storageKey = 'project-voice.rollout-client-id';
+      let clientId = localStorage.getItem(storageKey);
+      if (!clientId) {
+        clientId = crypto.randomUUID();
+        localStorage.setItem(storageKey, clientId);
+      }
+      let isInstalledLocally = false;
+      try {
+        isInstalledLocally =
+          (await this.modelManager.getActiveVersionMetadata()) !== null;
+      } catch {
+        // Rollout evaluation fails closed for new activation.
+      }
+      const resolution = resolveSafeInferenceMode(
+        this.stateInternal.inferenceMode,
+        isInstalledLocally,
+        flags,
+        clientId,
+      );
+      this.localActivationAllowed = resolution.isLocalAllowedForNewActivations;
+      this.stateInternal.inferenceMode = resolution.effectiveMode;
+      this.requestUpdate();
+    });
 
     if (this.stateInternal.inferenceMode === 'local') {
       void this.modelManager.startup(true).catch(error => {
@@ -1161,6 +1193,7 @@ export class PvAppElement extends SignalWatcher(LitElement) {
         .state=${this.stateInternal}
         .modelManager=${this.modelManager}
         .enableDebugModelImport=${this.featureEnableLocalModelImport}
+        .localActivationAllowed=${this.localActivationAllowed}
         @ok-click=${this.onOkClick}
       ></pv-setting-panel>
     `;

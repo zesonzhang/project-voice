@@ -140,6 +140,30 @@ def RunMacro():
   return macro.RunMacro(macro_id, user_inputs, temperature, model_id)
 
 
+@app.route('/api/features', methods=['GET'])
+def GetFeatures():
+  """Returns validated public rollout controls."""
+  default_mode = 'disabled' if os.environ.get(
+      'GAE_ENV') == 'standard' else 'all'
+  on_device_mode = os.environ.get('FEATURE_ON_DEVICE_MODE', default_mode)
+  if on_device_mode not in ('disabled', 'internal', 'canary', 'all'):
+    on_device_mode = 'disabled'
+  try:
+    rollout_pct = int(os.environ.get('ON_DEVICE_ROLLOUT_PERCENTAGE', '100'))
+  except ValueError:
+    rollout_pct = 0
+  response = flask.jsonify({
+      'onDeviceMode': on_device_mode,
+      'debugModelImport': os.environ.get('FEATURE_DEBUG_MODEL_IMPORT') == '1',
+      'rolloutPercentage': max(0, min(100, rollout_pct)),
+      # This value is asserted by the server session. The client cannot opt
+      # itself into the internal cohort by changing local state.
+      'internalUser': flask.session.get('is_internal_user') is True,
+  })
+  response.headers['Cache-Control'] = 'private, no-store'
+  return response, 200
+
+
 @app.route('/api/on-device-models/default', methods=['GET'])
 def GetDefaultOnDeviceModel():
   catalog = model_catalog.get_catalog()
