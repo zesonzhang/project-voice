@@ -39,12 +39,18 @@ import {
   exportPrivacySafeDiagnostics,
 } from './on-device/diagnostics-exporter.js';
 import {
-  DownloadProgress,
-  ModelErrorCode,
-  ModelLifecycleState,
-  ModelManager,
-} from './on-device/model-manager.js';
+  renderModelCardTemplate,
+  renderRemoveConfirmDialogTemplate,
+} from './on-device/model-card-template.js';
+import {DownloadProgress, ModelManager} from './on-device/model-manager.js';
 import {ModelVersionRecord} from './on-device/model-metadata.js';
+import {
+  formatBytes,
+  formatLifecycleState,
+  formatSpeed,
+  getActionableErrorMessage,
+  getBadgeClass,
+} from './on-device/ui-utils.js';
 import {State} from './state.js';
 
 const EVENT_KEY = {
@@ -70,25 +76,25 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
   private activeSettingsTabIndex = 0;
 
   @state()
-  private downloadProgress: DownloadProgress | null = null;
+  downloadProgress: DownloadProgress | null = null;
 
   @state()
-  private storageEstimate: StorageEstimate | null = null;
+  storageEstimate: StorageEstimate | null = null;
 
   @state()
-  private activeVersionMetadata: ModelVersionRecord | null = null;
+  activeVersionMetadata: ModelVersionRecord | null = null;
 
   @state()
-  private isCheckingUpdates = false;
+  isCheckingUpdates = false;
 
   @state()
-  private updateCheckMessage: string | null = null;
+  updateCheckMessage: string | null = null;
 
   @state()
-  private actionError: string | null = null;
+  actionError: string | null = null;
 
   @state()
-  private showRemoveConfirm = false;
+  showRemoveConfirm = false;
 
   private removeTrigger: HTMLElement | null = null;
 
@@ -353,19 +359,6 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     }
   }
 
-  private onDiagnosticsToggle(event: Event): void {
-    const details = event.currentTarget as HTMLDetailsElement;
-    if (this.diagnosticsTimer !== undefined) {
-      window.clearInterval(this.diagnosticsTimer);
-      this.diagnosticsTimer = undefined;
-    }
-    if (details.open) {
-      this.diagnosticsTimer = window.setInterval(() => {
-        this.requestUpdate();
-      }, 2000);
-    }
-  }
-
   private fireEvent(key: EventKey): void {
     this.dispatchEvent(
       new CustomEvent(key, {
@@ -376,117 +369,13 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     );
   }
 
-  private formatBytes(bytes: number): string {
-    if (!bytes || bytes <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return `${(bytes / Math.pow(1024, i)).toFixed(i >= 3 ? 2 : 0)} ${units[i]}`;
-  }
+  private formatBytes = formatBytes;
+  private formatSpeed = formatSpeed;
+  private formatLifecycleState = formatLifecycleState;
+  private getBadgeClass = getBadgeClass;
+  private getActionableErrorMessage = getActionableErrorMessage;
 
-  private formatSpeed(bps: number): string {
-    if (!bps || bps <= 0) return '0 MB/s';
-    return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
-  }
-
-  private formatLifecycleState(state: ModelLifecycleState): string {
-    switch (state) {
-      case 'unsupported':
-        return msg('Hardware Unsupported');
-      case 'not_downloaded':
-        return msg('Download Required');
-      case 'downloading':
-        return msg('Downloading...');
-      case 'verifying':
-        return msg('Verifying Checksum...');
-      case 'downloaded':
-        return msg('Ready to Load');
-      case 'loading':
-        return msg('Loading into WebGPU...');
-      case 'ready':
-        return msg('Ready (Active)');
-      case 'generating':
-        return msg('Generating...');
-      case 'update_available':
-        return msg('Update Available');
-      case 'error':
-        return msg('Error');
-      default:
-        return state;
-    }
-  }
-
-  private getBadgeClass(state: ModelLifecycleState): string {
-    switch (state) {
-      case 'ready':
-      case 'generating':
-        return 'badge-ready';
-      case 'downloading':
-      case 'verifying':
-      case 'loading':
-      case 'update_available':
-        return 'badge-active';
-      case 'error':
-      case 'unsupported':
-        return 'badge-error';
-      default:
-        return 'badge-neutral';
-    }
-  }
-
-  private getActionableErrorMessage(code?: ModelErrorCode): string {
-    switch (code) {
-      case 'ERR_WEBGPU_UNSUPPORTED':
-        return msg(
-          'WebGPU is not supported or device was lost on this system.',
-        );
-      case 'ERR_ADAPTER_UNSUPPORTED':
-        return msg(
-          'This model format is not compatible with the installed runtime.',
-        );
-      case 'ERR_STORAGE_UNSUPPORTED':
-        return msg(
-          'Persistent browser storage is unavailable. Check site permissions.',
-        );
-      case 'ERR_INSUFFICIENT_STORAGE':
-        return msg(
-          'Insufficient storage space to download model. Please free up disk space.',
-        );
-      case 'ERR_PERSISTENCE_DENIED':
-        return msg(
-          'Persistent storage was denied. Free space or update site permissions, then retry.',
-        );
-      case 'ERR_DOWNLOAD_FAILED':
-        return msg(
-          'Failed to download model artifact. Check your network connection.',
-        );
-      case 'ERR_URL_EXPIRED':
-        return msg('The download link expired. Retry to request a new link.');
-      case 'ERR_RANGE_NOT_SATISFIABLE':
-        return msg(
-          'The partial download cannot be resumed safely. Retry the download.',
-        );
-      case 'ERR_GENERATION_MISMATCH':
-        return msg('The downloaded model version changed. Check for updates.');
-      case 'ERR_CHECKSUM_MISMATCH':
-        return msg(
-          'Model integrity check failed. The downloaded file may be corrupted.',
-        );
-      case 'ERR_LOAD_FAILED':
-        return msg('Failed to load model into WebGPU runtime.');
-      case 'ERR_SMOKE_TEST_FAILED':
-        return msg(
-          'Activation smoke test failed. Model output could not be verified.',
-        );
-      case 'ERR_TAB_LOCKED':
-        return msg(
-          'Model is currently in use or downloading in another browser tab.',
-        );
-      default:
-        return msg('An error occurred with on-device inference.');
-    }
-  }
-
-  private async onDownloadClick(): Promise<void> {
+  async onDownloadClick(): Promise<void> {
     this.actionError = null;
     try {
       await this.modelManager?.downloadModel();
@@ -495,11 +384,11 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     }
   }
 
-  private onCancelDownloadClick(): void {
+  onCancelDownloadClick(): void {
     this.modelManager?.pauseDownload();
   }
 
-  private async onLoadClick(): Promise<void> {
+  async onLoadClick(): Promise<void> {
     this.actionError = null;
     try {
       await this.modelManager?.loadActiveModel();
@@ -508,11 +397,11 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     }
   }
 
-  private async onUnloadClick(): Promise<void> {
+  async onUnloadClick(): Promise<void> {
     await this.modelManager?.unloadActiveModel();
   }
 
-  private async onRetryClick(): Promise<void> {
+  async onRetryClick(): Promise<void> {
     this.actionError = null;
     try {
       await this.modelManager?.initialize();
@@ -524,7 +413,7 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     }
   }
 
-  private async onCheckUpdateClick(): Promise<void> {
+  async onCheckUpdateClick(): Promise<void> {
     this.isCheckingUpdates = true;
     this.updateCheckMessage = null;
     try {
@@ -543,18 +432,18 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     }
   }
 
-  private onConfirmRemoveClick(event: Event): void {
+  onConfirmRemoveClick(event: Event | {currentTarget: HTMLElement}): void {
     this.removeTrigger = event.currentTarget as HTMLElement;
     this.showRemoveConfirm = true;
   }
 
-  private onRemoveDialogClosed(): void {
+  onRemoveDialogClosed(): void {
     this.showRemoveConfirm = false;
     this.removeTrigger?.focus();
     this.removeTrigger = null;
   }
 
-  private async onExportDiagnosticsClick(): Promise<void> {
+  async onExportDiagnosticsClick(): Promise<void> {
     if (!this.modelManager) return;
     try {
       const report = await exportPrivacySafeDiagnostics(this.modelManager);
@@ -564,7 +453,7 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     }
   }
 
-  private async onInferenceModeChange(mode: 'cloud' | 'local'): Promise<void> {
+  async onInferenceModeChange(mode: 'cloud' | 'local'): Promise<void> {
     // Persist first so Cloud requests stop immediately, even if local startup
     // subsequently reports that a model must be downloaded or reloaded.
     this.state.inferenceMode = mode;
@@ -578,7 +467,7 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     }
   }
 
-  private async executeRemoveModel(): Promise<void> {
+  async executeRemoveModel(): Promise<void> {
     this.showRemoveConfirm = false;
     const manifest = this.modelManager?.getActiveManifest();
     if (manifest) {
@@ -586,14 +475,14 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     }
   }
 
-  private triggerFileImport(): void {
+  triggerFileImport(): void {
     const input = this.renderRoot.querySelector(
       '#debug-model-file',
     ) as HTMLInputElement;
     input?.click();
   }
 
-  private async onFileImportChange(e: Event): Promise<void> {
+  async onFileImportChange(e: Event): Promise<void> {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
@@ -607,289 +496,21 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
     }
   }
 
+  onDiagnosticsToggle(event: Event): void {
+    const details = event.currentTarget as HTMLDetailsElement;
+    if (this.diagnosticsTimer !== undefined) {
+      window.clearInterval(this.diagnosticsTimer);
+      this.diagnosticsTimer = undefined;
+    }
+    if (details.open) {
+      this.diagnosticsTimer = window.setInterval(() => {
+        this.requestUpdate();
+      }, 2000);
+    }
+  }
+
   private renderModelCard() {
-    const mgr = this.modelManager;
-    const state = mgr?.getState() ?? 'not_downloaded';
-    const manifest = mgr?.getActiveManifest();
-    const err = mgr?.getError();
-    const metrics = mgr?.getRuntimeAdapter()?.getMetrics();
-    const unknown = msg('Unknown');
-
-    return html`
-      <div class="model-card">
-        <div class="model-card-header">
-          <span class="model-card-title"
-            >${manifest?.displayName || msg('Gemma On-device')}</span
-          >
-          <span class="model-badge ${this.getBadgeClass(state)}">
-            ${this.formatLifecycleState(state)}
-          </span>
-        </div>
-
-        <div class="model-meta-row">
-          <span>${msg('Format')}: <b>${manifest?.format || unknown}</b></span>
-          <span>${msg('Version')}: <b>${manifest?.version || unknown}</b></span>
-          <span
-            >${msg('Size')}:
-            <b
-              >${manifest?.sizeBytes
-                ? this.formatBytes(manifest.sizeBytes)
-                : unknown}</b
-            ></span
-          >
-          <span
-            >${msg('Compatibility')}:
-            <b
-              >${manifest &&
-              manifest.adapterId === mgr?.getRuntimeAdapter()?.adapterId
-                ? msg('Compatible')
-                : unknown}</b
-            ></span
-          >
-          <span
-            >${msg('Verification')}:
-            <b
-              >${this.activeVersionMetadata?.importStatus ===
-              'unverified_import'
-                ? msg('Unverified import')
-                : this.activeVersionMetadata?.verificationState === 'verified'
-                  ? msg('Checksum verified')
-                  : unknown}</b
-            ></span
-          >
-        </div>
-
-        <div class="privacy-notice" role="status" aria-live="polite">
-          ${msg(
-            'When On-device is selected, suggestion text is not sent to Gemini.',
-          )}
-        </div>
-
-        ${err || this.actionError
-          ? html`
-              <div class="error-notice" role="alert" aria-live="assertive">
-                ${this.getActionableErrorMessage(err?.code)}
-                ${this.actionError ? html`<div>${this.actionError}</div>` : ''}
-              </div>
-            `
-          : ''}
-        ${state === 'downloading' && this.downloadProgress
-          ? html`
-              <div
-                class="model-progress-container"
-                role="progressbar"
-                aria-valuenow="${this.downloadProgress.percentage}"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-label="${msg('Model download progress')}"
-              >
-                <md-linear-progress
-                  value="${this.downloadProgress.percentage / 100}"
-                  aria-label="${msg('Model download progress')}"
-                ></md-linear-progress>
-                <div class="progress-text" role="status" aria-live="polite">
-                  <span
-                    >${this.formatBytes(this.downloadProgress.bytesDownloaded)}
-                    / ${this.formatBytes(this.downloadProgress.totalBytes)}
-                    (${this.downloadProgress.percentage}%)</span
-                  >
-                  <span
-                    >${this.formatSpeed(this.downloadProgress.speedBps)}</span
-                  >
-                </div>
-              </div>
-            `
-          : ''}
-        ${this.updateCheckMessage
-          ? html`<div
-              class="progress-text"
-              role="status"
-              aria-live="polite"
-              style="color: var(--md-sys-color-primary, #0b57d0)"
-            >
-              ${this.updateCheckMessage}
-            </div>`
-          : ''}
-
-        <div class="model-actions">
-          ${state === 'not_downloaded'
-            ? html`<md-filled-button @click=${this.onDownloadClick}
-                >${this.downloadProgress?.bytesDownloaded
-                  ? msg('Resume Download')
-                  : msg('Download')}</md-filled-button
-              >`
-            : ''}
-          ${state === 'downloading'
-            ? html`<md-text-button @click=${this.onCancelDownloadClick}
-                >${msg('Cancel Download')}</md-text-button
-              >`
-            : ''}
-          ${state === 'downloaded'
-            ? html`<md-filled-button @click=${this.onLoadClick}
-                >${msg('Load Model')}</md-filled-button
-              >`
-            : ''}
-          ${state === 'ready'
-            ? html`<md-text-button @click=${this.onUnloadClick}
-                >${msg('Unload')}</md-text-button
-              >`
-            : ''}
-          ${state === 'update_available'
-            ? html`<md-filled-button @click=${this.onDownloadClick}
-                >${msg('Update')}</md-filled-button
-              >`
-            : ''}
-          ${state === 'error'
-            ? html`
-                <md-filled-button @click=${this.onRetryClick}
-                  >${msg('Retry')}</md-filled-button
-                >
-                <md-text-button
-                  @click=${() => void this.onInferenceModeChange('cloud')}
-                  >${msg('Switch to Cloud')}</md-text-button
-                >
-              `
-            : ''}
-          ${state === 'downloaded' ||
-          state === 'ready' ||
-          state === 'update_available'
-            ? html`<md-text-button @click=${this.onConfirmRemoveClick}
-                >${msg('Remove')}</md-text-button
-              >`
-            : ''}
-          <md-text-button
-            @click=${this.onCheckUpdateClick}
-            ?disabled=${this.isCheckingUpdates}
-          >
-            ${this.isCheckingUpdates
-              ? msg('Checking...')
-              : msg('Check for Updates')}
-          </md-text-button>
-          ${this.enableDebugModelImport
-            ? html`
-                <md-text-button @click=${this.triggerFileImport}>
-                  ${msg('Import Local Model')}
-                </md-text-button>
-                <input
-                  type="file"
-                  id="debug-model-file"
-                  accept=".litertlm"
-                  style="display: none"
-                  @change=${this.onFileImportChange}
-                />
-              `
-            : ''}
-        </div>
-
-        <details
-          class="diagnostics-details"
-          @toggle=${this.onDiagnosticsToggle}
-        >
-          <summary>${msg('Resource & Diagnostics')}</summary>
-          <div class="diagnostics-grid">
-            <div class="diagnostics-item">
-              <span class="diagnostics-label">${msg('Logical CPUs')}:</span>
-              <span class="diagnostics-value"
-                >${navigator.hardwareConcurrency || unknown}</span
-              >
-            </div>
-            <div class="diagnostics-item">
-              <span class="diagnostics-label"
-                >${msg('Approx Device RAM')}:</span
-              >
-              <span class="diagnostics-value"
-                >${(navigator as unknown as {deviceMemory?: number})
-                  .deviceMemory
-                  ? `${(navigator as unknown as {deviceMemory?: number}).deviceMemory} GB`
-                  : unknown}</span
-              >
-            </div>
-            <div class="diagnostics-item">
-              <span class="diagnostics-label"
-                >${msg('OPFS Storage Quota')}:</span
-              >
-              <span class="diagnostics-value"
-                >${this.storageEstimate?.quota
-                  ? this.formatBytes(this.storageEstimate.quota)
-                  : unknown}</span
-              >
-            </div>
-            <div class="diagnostics-item">
-              <span class="diagnostics-label"
-                >${msg('OPFS Storage Used')}:</span
-              >
-              <span class="diagnostics-value"
-                >${this.storageEstimate?.usage
-                  ? this.formatBytes(this.storageEstimate.usage)
-                  : unknown}</span
-              >
-            </div>
-            <div class="diagnostics-item">
-              <span class="diagnostics-label">${msg('Runtime Backend')}:</span>
-              <span class="diagnostics-value">WebGPU</span>
-            </div>
-            <div class="diagnostics-item">
-              <span class="diagnostics-label">${msg('Page Memory')}:</span>
-              <span class="diagnostics-value"
-                >${(
-                  performance as unknown as {
-                    memory?: {usedJSHeapSize: number};
-                  }
-                ).memory?.usedJSHeapSize
-                  ? this.formatBytes(
-                      (
-                        performance as unknown as {
-                          memory: {usedJSHeapSize: number};
-                        }
-                      ).memory.usedJSHeapSize,
-                    )
-                  : msg('Unavailable')}</span
-              >
-            </div>
-            <div class="diagnostics-item">
-              <span class="diagnostics-label">${msg('Model State')}:</span>
-              <span class="diagnostics-value"
-                >${this.formatLifecycleState(state)}</span
-              >
-            </div>
-            <div class="diagnostics-item">
-              <span class="diagnostics-label">${msg('Model Activity')}:</span>
-              <span class="diagnostics-value"
-                >${metrics?.dutyCyclePercent !== undefined
-                  ? `${metrics.dutyCyclePercent.toFixed(1)}%`
-                  : msg('Unavailable')}</span
-              >
-            </div>
-            <div class="diagnostics-item">
-              <span class="diagnostics-label">${msg('Last Latency')}:</span>
-              <span class="diagnostics-value"
-                >${metrics?.totalMs
-                  ? `${metrics.totalMs.toFixed(0)} ms`
-                  : msg('N/A')}</span
-              >
-            </div>
-            <div class="diagnostics-item">
-              <span class="diagnostics-label">${msg('Throughput')}:</span>
-              <span class="diagnostics-value"
-                >${metrics?.tokensPerSecond
-                  ? `${metrics.tokensPerSecond.toFixed(1)} tok/s`
-                  : msg('N/A')}</span
-              >
-            </div>
-            <div
-              style="margin-top: 12px; display: flex; justify-content: flex-end;"
-            >
-              <md-text-button
-                @click=${this.onExportDiagnosticsClick}
-                aria-label="${msg('Export privacy-safe diagnostics report')}"
-              >
-                ${msg('Export Diagnostics (JSON)')}
-              </md-text-button>
-            </div>
-          </div>
-        </details>
-      </div>
-    `;
+    return renderModelCardTemplate(this);
   }
 
   render() {
@@ -1184,31 +805,7 @@ export class PvSettingPanel extends SignalWatcher(LitElement) {
         </div>
       </md-dialog>
 
-      <md-dialog
-        id="remove-confirm-dialog"
-        ?open=${this.showRemoveConfirm}
-        @closed=${this.onRemoveDialogClosed}
-        role="alertdialog"
-        aria-labelledby="remove-confirm-headline"
-        aria-describedby="remove-confirm-content"
-      >
-        <div slot="headline" id="remove-confirm-headline">
-          ${msg('Remove Local Model?')}
-        </div>
-        <div slot="content" id="remove-confirm-content">
-          ${msg(
-            'This will delete the model weights from local storage (~2 GB). You will need to download the model again to use on-device suggestions.',
-          )}
-        </div>
-        <div slot="actions">
-          <md-text-button @click=${() => (this.showRemoveConfirm = false)}>
-            ${msg('Cancel')}
-          </md-text-button>
-          <md-filled-button @click=${this.executeRemoveModel}>
-            ${msg('Remove')}
-          </md-filled-button>
-        </div>
-      </md-dialog>
+      ${renderRemoveConfirmDialogTemplate(this)}
     `;
   }
 }

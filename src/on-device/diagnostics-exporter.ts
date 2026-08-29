@@ -14,11 +14,8 @@
  * limitations under the License.
  */
 
-import {
-  ModelLifecycleState,
-  ModelManager,
-  StateTransitionRecord,
-} from './model-manager.js';
+import {ModelLifecycleState} from './model-lifecycle.js';
+import {ModelManager, StateTransitionRecord} from './model-manager.js';
 
 export interface PrivacySafeDiagnosticsReport {
   schemaVersion: 1;

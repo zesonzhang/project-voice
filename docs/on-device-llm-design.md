@@ -1,10 +1,14 @@
 # On-Device LLM Suggestions for Project VOICE
 
-**Status:** Proposed  
-**Last updated:** 2026-08-26
+**Status:** Implemented / Production-Ready
+**Last updated:** 2026-08-29
 
-**Target release:** To be determined after the feasibility milestone  
-**Overall estimate:** XL, approximately 26–36 engineer-weeks
+**Target release:** General Availability Release
+**Overall status:** Complete (All Milestones Pre-M1 through M4 delivered & audited)
+
+**Contributor guide:**
+[`docs/on-device-llm-maintenance.md`](./on-device-llm-maintenance.md) is the
+current implementation map, ownership guide, and verification checklist.
 
 ## 1. Executive Summary
 
@@ -454,7 +458,7 @@ It is enabled with:
 - `Cross-Origin-Opener-Policy: same-origin` (**COOP**).
 - `Cross-Origin-Embedder-Policy: require-corp` (**COEP**).
 
-These headers restrict how the page interacts with cross-origin windows and resources. Project VOICE must therefore bundle runtime dependencies and self-host fonts and icons. [Cross-origin isolation guidance](https://web.dev/articles/coop-coep)
+These headers restrict how the page interacts with cross-origin windows and resources. Project VOICE bundles runtime dependencies and self-hosts Wasm/Worker assets (`/static/vendor/litert-lm/wasm/`), while external Google Fonts are loaded via Google Fonts CDN with `crossorigin="anonymous"` and scoped CSP directives. [Cross-origin isolation guidance](https://web.dev/articles/coop-coep)
 
 **Content Security Policy (CSP)** restricts where scripts, Workers, and network requests may originate. It reduces the risk that an injection vulnerability could read local prompts or model data.
 
@@ -1301,7 +1305,24 @@ flowchart LR
     M3 --> M4
 ```
 
-The critical path is `M0 → M1 provider contracts → M2 storage activation → M3 runtime integration → M4 release gates`. Backend/GCS work from M2 can start after M0 and run in parallel with M1. UI mockups and accessibility review preparation can also begin during M2, but the final Settings integration depends on the ModelManager state contract.
+The critical path was `M0 → M1 provider contracts → M2 storage activation → M3 runtime integration → M4 release gates`. Backend/GCS work from M2 started after M0 and ran in parallel with M1.
+
+### 14.1 Implementation Status & Audit Traceability
+
+All planned milestones (Pre-M1 through M4) along with post-M4 domain modularization have been implemented, verified, and audited:
+
+| Milestone | Scope | Status | Audit Reference |
+|---|---|:---:|---|
+| **Pre-M1** | Monotonic Sequence Tagging (Triple-Gate race condition elimination) | **COMPLETE** | [`docs/sequence-tagging-feature-brief.md`](./sequence-tagging-feature-brief.md) |
+| **M0** | Feasibility & Benchmark Harness (`@litert-lm/core@0.15.0` + `gemma-4-E2B-it-web`) | **COMPLETE (GO)** | [`docs/m0/audit.md`](./m0/audit.md), [`docs/m0/decision.md`](./m0/decision.md) |
+| **M1** | Provider & Prompt Foundation (Router, bundled Jinja, 210 golden fixtures) | **COMPLETE** | [`docs/m1/audit.md`](./m1/audit.md) |
+| **M2** | Model Catalog, Download, Storage & Lifecycle (IndexedDB, OPFS, Range resume) | **COMPLETE** | [`docs/m2/audit.md`](./m2/audit.md) |
+| **M3** | Production Runtime & Settings UX (Worker, model card, telemetry, import, a11y) | **COMPLETE** | [`docs/m3/audit.md`](./m3/audit.md) |
+| **M4** | Hardening, Cross-Platform Validation & Launch (M4.1–M4.13) | **COMPLETE (RELEASE)** | [`docs/m4/audit.md`](./m4/audit.md), [`docs/m4/runbooks/`](./m4/runbooks/) |
+| **Post-M4** | Modular Domain Services Architecture Refactor (`a12c92a`) | **COMPLETE** | `src/on-device/` domain modules, `suggestion-parser.ts` |
+
+### 14.2 Detailed Milestone Breakdown
+
 
 ### 14.3 M0 — Feasibility and benchmark
 

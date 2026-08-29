@@ -105,3 +105,16 @@ npm run test:on-device-boundary
 npm run verify:m1-prompts
 npm run test:m0-verifier
 ```
+
+---
+
+## Post-M2 Evolution & Domain Modularization Note
+
+1. **M4 Security Hardening:**
+   - In Milestone 4 (M4.4), the signed-download-URL endpoint was further hardened with per-client sliding-window rate limiting, strict CSP, and full isolation headers (`COOP: same-origin`, `COEP: require-corp`, `CORP: same-origin`). See [`docs/m4/README.md`](../m4/README.md) and [`docs/m4/audit.md`](../m4/audit.md).
+2. **Domain Decomposition Refactor (Commit `a12c92a`):**
+   - The monolithic `ModelManager` was decomposed into focused domain services:
+     - `src/on-device/model-capabilities.ts` (`ModelCapabilities`): Hardware, WebGPU, and storage quota preflight checks.
+     - `src/on-device/model-downloader.ts` (`ModelDownloader`): Resumable HTTP Range download, signed URL caching, 403 refresh, and chunk streaming.
+     - `src/on-device/model-importer.ts` (`ModelImporter`): Local `.litertlm` file streaming import and SHA-256 calculation.
+     - `ModelManager` now serves as the focused lifecycle coordinator and facade delegating to these services.

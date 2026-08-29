@@ -1,9 +1,10 @@
 # Project VOICE System Architecture (Cloud + On-Device Local + Chrome Prompt API)
 
-**Status:** Proposed  
-**Last updated:** 2026-08-26  
-**Primary references:**  
+**Status:** Implemented / Production-Ready
+**Last updated:** 2026-08-29
+**Primary references:**
 - [`docs/on-device-llm-design.md`](./on-device-llm-design.md)
+- [`docs/on-device-llm-maintenance.md`](./on-device-llm-maintenance.md)
 - [`docs/on-device-llm-session-handoff.md`](./on-device-llm-session-handoff.md)
 - [Chrome Built-in AI: The Prompt API](https://developer.chrome.com/docs/ai/prompt-api)
 
@@ -49,12 +50,16 @@ flowchart TB
     %% 1. Client Environment (Desktop Chrome)
     %% ============================================================
     subgraph Client ["<b>Client: Desktop Chrome Browser</b>"]
-        
+
         %% UI & Configuration Layer
         subgraph Sub_UI ["UI & State Layer (Lit Web Components)"]
-            PVApp["<b>pv-app (Main App UI)</b><br/>• Collects text/speech input & context<br/>• Displays word & sentence suggestions"]:::existingComp
-            SettingsPanel["<b>Settings Panel</b><br/>• Toggle mode: Cloud / Custom Local / Chrome Prompt API<br/>• Model card, actions, telemetry & availability"]:::existingComp
+            PVApp["<b>pv-app (Main App UI)</b><br/>• Collects text/speech input & context<br/>• Triple-gate monotonic sequence tagging<br/>• Displays word & sentence suggestions"]:::existingComp
+            SettingsPanel["<b>SettingsPanel (Container)</b><br/>• Mode toggle: Cloud / Custom / Prompt API<br/>• Telemetry metrics & diagnostics export"]:::existingComp
+            ModelCard["<b>pv-on-device-model-card</b><br/>• Standalone model card element<br/>• Lifecycle actions, progress & dialogs"]:::onDeviceLocal
+            UIUtils["<b>ui-utils & card-template</b><br/>• Pure formatting & Lit HTML templates"]:::onDeviceLocal
             LocalStorage["<b>localStorage (Config Storage)</b><br/>• Persists user inferenceMode setting"]:::existingComp
+            FeatureFlags["<b>FeatureFlagsManager</b><br/>• Rollout cohort evaluation & kill-switch"]:::onDeviceLocal
+            Diagnostics["<b>DiagnosticsExporter</b><br/>• Sanitized JSON telemetry export"]:::onDeviceLocal
         end
 
         %% Routing Layer
@@ -74,11 +79,18 @@ flowchart TB
 
         %% Path 2: On-Device Custom Model Path (LiteRT-LM + WebGPU)
         subgraph Sub_LocalCustom ["<b>On-Device Custom Model Path (LiteRT-LM / WebGPU - Green)</b>"]
-            LocalCustomProvider["<b>LocalSuggestionProvider (Custom)</b><br/>• Orchestrates local word & sentence runs<br/>• Serializes requests (words first, then sentences)<br/>• Preempts stale runs on newer input<br/>• Normalizes streaming output"]:::onDeviceLocal
-            ModelManager["<b>ModelManager (Lifecycle State Machine)</b><br/>• WebGPU capability & storage quota checks<br/>• Resumable download & SHA-256 validation<br/>• Automatic model load, update & safe rollback"]:::onDeviceLocal
+            LocalCustomProvider["<b>LocalSuggestionProvider (Custom)</b><br/>• Orchestrates local word & sentence runs<br/>• Serializes requests (words first, then sentences)<br/>• Preempts stale runs on newer input"]:::onDeviceLocal
+            SuggestionParser["<b>SuggestionParser</b><br/>• Extracted response parser & normalizer<br/>• Japanese text & whitespace cleanup"]:::onDeviceLocal
+
+            subgraph Sub_ModelServices ["<b>Model Lifecycle Domain Services</b>"]
+                ModelManager["<b>ModelManager (Lifecycle Coordinator)</b><br/>• 10-state machine orchestrator & facade<br/>• Automatic model load, update & safe rollback"]:::onDeviceLocal
+                ModelCapabilities["<b>ModelCapabilities</b><br/>• Hardware, WebGPU & storage preflights<br/>• Quota headroom verification (+20%)"]:::onDeviceLocal
+                ModelDownloader["<b>ModelDownloader</b><br/>• Resumable HTTP Range chunk streaming<br/>• Signed URL caching & 403 token refresh"]:::onDeviceLocal
+                ModelImporter["<b>ModelImporter</b><br/>• File-picker streaming import (.litertlm)<br/>• Chunked SHA-256 calculation"]:::onDeviceLocal
+            end
 
             subgraph Sub_Worker ["<b>Inference Web Worker (Dedicated Background Thread)</b>"]
-                InferenceWorker["<b>Inference Web Worker</b><br/>• Offloads heavy compute to keep UI responsive<br/>• Manages model init, streaming & cancellation"]:::onDeviceLocal
+                InferenceWorker["<b>Inference Web Worker</b><br/>• Offloads heavy compute to keep UI responsive<br/>• Self-hosted Wasm / Worker assets (/static/vendor/)"]:::onDeviceLocal
                 RuntimeAdapter["<b>ModelRuntimeAdapter (LiteRT-LM Adapter)</b><br/>• Tokenizer encoding & decoding<br/>• KV Cache memory management<br/>• Autoregressive decoding & sampling control"]:::onDeviceLocal
                 ComputeEngine["<b>LiteRT-LM Core + WebGPU</b><br/>• Dispatches tensor operations to local GPU<br/>• Executes certified Gemma model (.litertlm)"]:::onDeviceLocal
             end
@@ -100,31 +112,36 @@ flowchart TB
     %% 2. Backend & Cloud Infrastructure
     %% ============================================================
     subgraph CloudBackend ["<b>Backend & Cloud Infrastructure</b>"]
-        
+
         %% Python / Flask Backend (App Engine)
         subgraph Sub_Flask ["Python / Flask Backend (App Engine)"]
             MacroAPI["<b>/run-macro API</b><br/>• Renders prompts via Jinja in Python<br/>• Proxies requests to Gemini API"]:::existingComp
             CatalogAPI["<b>/api/on-device-models/default</b><br/>• Serves default model manifest<br/>• Provides version, SHA-256 & hardware requirements"]:::backendSupport
-            SignedUrlAPI["<b>/api/on-device-models/.../download-url</b><br/>• Authenticates & generates signed URL<br/>• Binds to immutable GCS generation"]:::backendSupport
+            SignedUrlAPI["<b>/api/on-device-models/.../download-url</b><br/>• Rate-limited session + CSRF authentication<br/>• Binds to immutable GCS generation"]:::backendSupport
+            FeaturesAPI["<b>/api/features</b><br/>• Rollout cohort flags & kill-switch controls"]:::backendSupport
         end
 
         %% Cloud Services & Storage
         subgraph Sub_CloudInfra ["Cloud Services & Storage"]
             GeminiAPI["<b>Gemini API</b><br/>• Google-hosted Cloud LLM service"]:::cloudExternal
-            GCSBucket["<b>Private GCS Bucket</b><br/>• Private bucket hosting immutable model weights<br/>• Supports direct browser Range resume downloads"]:::backendSupport
+            GCSBucket["<b>Private GCS Bucket</b><br/>• Private bucket hosting immutable model weights<br/>• Direct browser Range resume downloads via signed URL"]:::backendSupport
         end
     end
 
     %% ============================================================
     %% 3. Relationships & Interactions
     %% ============================================================
-    
+
     %% UI & Control Links
     PVApp -->|"Initiates suggestion request"| ProviderRouter
+    SettingsPanel -->|"Hosts standalone card"| ModelCard
+    ModelCard -->|"Uses formatting & templates"| UIUtils
     SettingsPanel -->|"Saves mode setting"| LocalStorage
     LocalStorage -.->|"Reads active mode"| ProviderRouter
-    SettingsPanel -->|"Controls custom model"| ModelManager
+    ModelCard -->|"Commands lifecycle"| ModelManager
+    SettingsPanel -->|"Triggers export"| Diagnostics
     SettingsPanel -.->|"Checks availability"| ChromeBuiltInAI
+    FeatureFlags -->|"Syncs rollout config"| FeaturesAPI
 
     %% Routing Decisions (3-Way Dispatch)
     ProviderRouter -->|"Mode = Cloud"| CloudProvider
@@ -138,12 +155,19 @@ flowchart TB
     %% Path 2: Custom Local Model Flow (LiteRT-LM)
     LocalCustomProvider -->|"Renders prompt"| PromptRenderer
     LocalCustomProvider -->|"Worker messaging"| InferenceWorker
+    LocalCustomProvider -->|"Normalizes & parses output"| SuggestionParser
     InferenceWorker -->|"Invokes adapter"| RuntimeAdapter
     RuntimeAdapter -->|"Schedules compute"| ComputeEngine
-    ModelManager -->|"Fetches manifest"| CatalogAPI
-    ModelManager -->|"Requests signed URL"| SignedUrlAPI
-    ModelManager -->|"Direct weight download"| GCSBucket
-    ModelManager -->|"Manages model files"| OPFS
+
+    %% Manager Domain Delegations
+    ModelManager -->|"Capability preflight"| ModelCapabilities
+    ModelManager -->|"Delegates download"| ModelDownloader
+    ModelManager -->|"Delegates file import"| ModelImporter
+    ModelDownloader -->|"Fetches signed URL"| SignedUrlAPI
+    ModelDownloader -->|"Direct Range download"| GCSBucket
+    ModelDownloader -->|"Streams chunks"| OPFS
+    ModelImporter -->|"Streams local file"| OPFS
+    ModelManager -->|"Fetches catalog"| CatalogAPI
     ModelManager -->|"Records metadata"| IndexedDB
     ModelManager -->|"Commands load/unload"| InferenceWorker
     InferenceWorker -->|"Streams model weights"| OPFS
@@ -163,20 +187,28 @@ flowchart TB
 
 | Category | Component | Core Responsibilities | Key Relationships & Interactions |
 |---|---|---|---|
-| **UI Presentation** | `pv-app` | Main application UI: collects user input context (text, speech, persona, conversation history, sentence emotion) and renders word/sentence suggestion chips. | Dispatches suggestion requests to `SuggestionProviderRouter`. |
-| **UI Settings** | `SettingsPanel` | Mode selector (`Cloud (Gemini)`, `On-device (Custom Gemma)`, `On-device (Chrome Prompt API)`); displays model cards, actions, resource telemetry, and Prompt API availability status. | Persists user selection to `localStorage`; triggers `ModelManager` actions or feature-detects `LanguageModel`. |
+| **UI Presentation** | `pv-app` | Main application UI: collects user input context (text, speech, persona, conversation history, sentence emotion), enforces **Triple-Gate monotonic sequence tagging** (`latestSequenceId`), and renders word/sentence suggestion chips. | Dispatches suggestion requests to `SuggestionProviderRouter`. |
+| **UI Settings** | `SettingsPanel` | Top-level settings container: mode selector (`Cloud (Gemini)`, `On-device (Custom Gemma)`, `On-device (Chrome Prompt API)`); hosts `<pv-on-device-model-card>`, resource telemetry, and diagnostics export. | Persists user selection to `localStorage`; triggers `ModelManager` actions or feature-detects `LanguageModel`. |
+| **🟩 Standalone Card UI** | `pv-on-device-model-card` | Standalone Lit custom element (`<pv-on-device-model-card>`): encapsulates on-device model card presentation, reactive lifecycle badges, accessible progress bars, and lifecycle action buttons. | Bound to `ModelManager` events; rendered inside `SettingsPanel`. |
+| **🟩 UI Helpers & Templates** | `ui-utils` & `model-card-template` | Pure formatting utilities (`formatBytes`, `formatSpeed`, `formatLifecycleState`, `getBadgeClass`, `getActionableErrorMessage`) and in-tree Lit HTML card and confirmation dialog templates. | Shared between `SettingsPanel` and `<pv-on-device-model-card>`. |
 | **Config Storage** | `localStorage` | Synchronous key-value storage for lightweight user settings (`inferenceMode: 'cloud' \| 'local_custom' \| 'local_prompt_api'`). | Read by `SuggestionProviderRouter` on startup and on each suggestion run. |
 | **Dispatch Router** | `SuggestionProviderRouter` | Evaluates active `inferenceMode` and routes requests to exactly one provider.<br/>**Core invariant:** Strictly **NO automatic fallback from any local mode to Cloud**. | Dispatches to `CloudSuggestionProvider`, `LocalSuggestionProvider`, or `ChromePromptApiSuggestionProvider`. |
 | **Cloud Client** | `CloudSuggestionProvider` | Wraps cloud suggestion requests and invokes the backend `/run-macro` endpoint. | Communicates over HTTP POST with backend `/run-macro`. |
 | **🟩 Local Prompt Engine** | `Browser Prompt Renderer` | In-browser Jinja2-compatible template engine rendering bundled canonical `.jinja2` prompt files (guaranteeing exact behavioural parity with Python Jinja rendering). | Shared by `LocalSuggestionProvider` and `ChromePromptApiSuggestionProvider` to construct standardized prompts. |
-| **🟩 Custom Model Provider** | `LocalSuggestionProvider` | **Custom on-device suggestion orchestrator:**<br/>1. Serialized execution: runs word completion first for lowest latency, followed by sentence completion.<br/>2. Preemption: cancels stale in-flight runs when newer input arrives.<br/>3. Streaming output normalization & numbered-list parsing. | Delegates prompt rendering to `Browser Prompt Renderer`; communicates with `Inference Web Worker` via typed messages. |
-| **🟩 Custom Model Manager** | `ModelManager` | **Custom model lifecycle state machine:**<br/>1. Preflights WebGPU capability & storage quota (`navigator.storage.estimate()`).<br/>2. Manages resumable downloads with Range requests and SHA-256 validation.<br/>3. Controls automatic model loading, atomic updates, and safe rollback. | Communicates with Backend APIs (`CatalogAPI`, `SignedUrlAPI`); downloads directly from GCS; reads/writes OPFS & IndexedDB; commands `Inference Web Worker`. |
-| **🟩 Off-Thread Worker** | `Inference Web Worker` | **Dedicated background Web Worker thread:** offloads model initialization, token generation, and SHA-256 hashing to keep the main UI thread and assistive input tools (e.g. eye tracking, switch access) completely stutter-free. | Driven by `ModelManager` and `LocalSuggestionProvider`; invokes `ModelRuntimeAdapter`; stream-reads model weights from `OPFS`. |
-| **🟩 Runtime Adapter** | `ModelRuntimeAdapter` | Application adapter implementing the runtime interface (LiteRT-LM): manages Tokenizer encoding/decoding, KV Cache allocation/lifecycle, autoregressive decoding loop, and sampling parameters (`temperature`, `topP`). | Bridges `Inference Web Worker` with the underlying `LiteRT-LM Core + WebGPU` engine. |
+| **🟩 Custom Model Provider** | `LocalSuggestionProvider` | **Custom on-device suggestion orchestrator:**<br/>1. Serialized execution: runs word completion first for lowest latency, emitting partial words via `onPartialResult`, followed by sentence completion.<br/>2. Preemption: cancels stale in-flight runs via `AbortController` when newer input arrives.<br/>3. Delegates response parsing to `SuggestionParser`. | Delegates prompt rendering to `Browser Prompt Renderer`; communicates with `Inference Web Worker` via typed messages; parses output via `SuggestionParser`. |
+| **🟩 Suggestion Parser** | `SuggestionParser` | Standalone parser and normalizer (`src/suggestion-parser.ts`): extracts numbered suggestions from raw model text, normalizes Japanese spacing/`§` substitution, strips half-width spaces, and deduplicates output. | Used by `LocalSuggestionProvider` to normalize streaming and final model responses. |
+| **🟩 Custom Model Manager** | `ModelManager` | **Focused lifecycle coordinator and facade:** coordinates 10-state lifecycle machine, automatic model startup, atomic update activation, and safe rollback by delegating to specialized domain services. | Delegates to `ModelCapabilities`, `ModelDownloader`, `ModelImporter`, and `InferenceWorkerClient`; persists to OPFS & IndexedDB. |
+| **🟩 Capability Preflight** | `ModelCapabilities` | Hardware and environment preflight service (`src/on-device/model-capabilities.ts`): detects HTTPS/localhost, WebGPU adapter, OPFS, Worker support, and enforces model size + 20% storage quota headroom. | Queried by `ModelManager` before initiating model download or import. |
+| **🟩 Resumable Downloader** | `ModelDownloader` | Resumable chunked streaming downloader (`src/on-device/model-downloader.ts`): streams signed URL responses directly into OPFS `.partial` files, persists byte offsets, refreshes expired 403 URLs, and recovers on 416 range errors. | Invoked by `ModelManager` during model download; coordinates Range requests directly with GCS. |
+| **🟩 Local Model Importer** | `ModelImporter` | Local file import service (`src/on-device/model-importer.ts`): streams user-selected `.litertlm` files into OPFS in 2 MB slices with incremental SHA-256 calculation for debug/development workflows. | Invoked by `ModelManager` when user imports an external candidate model. |
+| **🟩 Feature Flags & Rollout** | `FeatureFlagsManager` | Client-side rollout manager (`src/feature-flags.ts`): syncs rollout config from `/api/features`, evaluates rollout cohorts, and enforces kill-switch controls without silent Cloud fallback. | Queried during initialization and mode switching to gate Local mode availability. |
+| **🟩 Diagnostics Exporter** | `DiagnosticsExporter` | Privacy-safe telemetry export service (`src/on-device/diagnostics-exporter.ts`): generates sanitized JSON telemetry logs (hardware capabilities, state transitions, errors) with zero user text or signed URL leakage. | Triggered from Settings UI "Export Diagnostics" action. |
+| **🟩 Off-Thread Worker** | `Inference Web Worker` | **Dedicated background Web Worker thread:** offloads model initialization, token generation, and streaming to keep main UI thread completely stutter-free. Runs self-hosted Wasm and Worker assets (`/static/vendor/litert-lm/wasm/`). | Driven by `ModelManager` and `LocalSuggestionProvider`; invokes `ModelRuntimeAdapter`; stream-reads model weights from `OPFS`. |
+| **🟩 Runtime Adapter** | `ModelRuntimeAdapter` | Application adapter interface (`src/on-device/model-runtime-adapter.ts`): implemented by `InferenceWorkerClient` for production and `FakeModelRuntimeAdapter` for deterministic CI tests. | Bridges `Inference Web Worker` with the underlying `LiteRT-LM Core + WebGPU` engine. |
 | **🟩 Hardware Acceleration** | `LiteRT-LM Core + WebGPU` | Google LiteRT-LM browser runtime: submits tensor operations via Chrome's WebGPU API directly to the user's physical GPU, executing certified Gemma `.litertlm` model weights. | Executes accelerated model computation on local GPU hardware. |
-| **🟩 Custom Weights Storage** | `OPFS (Origin Private File System)` | Fast, browser-managed private filesystem storing multi-gigabyte `.litertlm` model weight packages and versioned `.partial` download chunks across browser sessions. | Written by `ModelManager` during download/import; read by `Inference Web Worker` during model initialization. |
-| **🟩 Custom Metadata Store** | `IndexedDB` | Transactional client database storing model manifest metadata, active version, download byte offsets, SHA-256 verification records, and last-known-good rollback state. | Queried and mutated by `ModelManager`. |
-| **🟩 Built-in AI Provider** | `ChromePromptApiSuggestionProvider` | **Native Prompt API provider:**<br/>1. Implements `SuggestionProvider` interface.<br/>2. Feature-detects `LanguageModel.availability()` / `capabilities()`.<br/>3. Creates `LanguageModel` sessions with system prompts & temperature options.<br/>4. Streams suggestions via `session.promptStreaming()` with structured output constraints. | Interacts directly with Chrome's native Built-in AI platform API (`window.ai.languageModel` / `LanguageModel`). |
+| **🟩 Custom Weights Storage** | `OPFS (Origin Private File System)` | Fast, browser-managed private filesystem storing multi-gigabyte `.litertlm` model weight packages and versioned `.partial` download chunks across browser sessions. | Written by `ModelDownloader` / `ModelImporter`; read by `Inference Web Worker`. |
+| **🟩 Custom Metadata Store** | `IndexedDB` | Transactional client database (`project-voice-model-store`) storing model manifest metadata, active version, download byte offsets, SHA-256 verification records, and last-known-good rollback state. | Queried and mutated by `ModelManager`. |
+| **🟩 Built-in AI Provider** | `ChromePromptApiSuggestionProvider` | **Native Prompt API provider:** implements `SuggestionProvider` interface, feature-detects `LanguageModel.availability()`, creates sessions with streaming, and parses suggestions with zero app download overhead. | Interacts directly with Chrome's native Built-in AI platform API (`window.ai.languageModel` / `LanguageModel`). |
 | **🟩 Built-in AI Runtime** | `Chrome Built-in AI (LanguageModel)` | Standardized WICG browser API exposing on-device foundation models (Gemini Nano) built into Chrome. **Fully managed by browser and OS** (zero application download or storage overhead). | Native C++/OS execution inside Chrome browser process. |
 
 ---
@@ -187,9 +219,11 @@ flowchart TB
 |---|---|---|
 | `/run-macro API` | Existing macro endpoint: renders prompt templates via Python Jinja and calls the Gemini API. | Receives requests from `CloudSuggestionProvider`; calls `Gemini API`. |
 | `/api/on-device-models/default` | **Model catalog endpoint:** serves the administrator-configured model manifest JSON for custom models (version, size, SHA-256 checksum, immutable GCS generation, and hardware requirements). | Queried by client `ModelManager` to discover custom model metadata and update availability. |
-| `/api/on-device-models/{modelId}/download-url` | **Signed URL generator endpoint:** authenticates the client session and produces a short-lived (1-hour), generation-pinned GCS Signed URL for custom model weights. | Used by client `ModelManager` to authorize direct downloads from GCS. |
+| `/api/on-device-models/{modelId}/download-url` | **Signed URL generator endpoint:** authenticates client session with SeaSurf CSRF, applies per-client sliding-window rate limiting, and produces short-lived (1-hour), generation-pinned GCS Signed URLs. Redacts tokens in server logs. | Used by client `ModelDownloader` to authorize direct downloads from GCS. |
+| `/api/features` | **Rollout & feature-flag endpoint:** serves feature flags and rollout cohorts (disabled, internal, canary, all) with percentage-based gradual enablement. Enforces zero-silent-fallback invariant. | Queried by client `FeatureFlagsManager`. |
+| `Security & Isolation Headers` | **Browser security isolation:** enforces global COOP (`same-origin`), COEP (`require-corp`), CORP (`same-origin`), and strict CSP on all Flask dynamic responses and App Engine static handlers. | Enables `window.crossOriginIsolated` and protects against cross-origin data leaks. |
 | `Gemini API` | Google-hosted generative AI service for Cloud inference mode. | Invoked by the Python backend. |
-| `Private GCS Bucket` | Private Google Cloud Storage bucket storing immutable Gemma `.litertlm` artifacts; configured with CORS for direct browser Range downloads. | Directly downloaded from by Chrome via signed URLs when using custom models. |
+| `Private GCS Bucket` | Private Google Cloud Storage bucket storing immutable Gemma `.litertlm` artifacts; configured with exact-origin CORS for direct browser Range downloads. | Directly downloaded from by Chrome via signed URLs when using custom models. |
 
 ---
 

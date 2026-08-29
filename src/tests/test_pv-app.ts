@@ -17,10 +17,10 @@
 import {ConfigStorage} from '../config-storage.js';
 import {CONFIG_DEFAULT} from '../constants.js';
 import {LANGUAGES} from '../language.js';
-import {MockLocalSuggestionProvider} from '../local-suggestion-provider.js';
 import {TEST_ONLY} from '../pv-app.js';
 import {State} from '../state.js';
 import {SuggestionProviderRouter} from '../suggestion-provider-router.js';
+import {MockLocalSuggestionProvider} from './mock-suggestion-providers.js';
 import {TEST_CONFIG} from './test_config-storage.js';
 
 describe('USA App', () => {

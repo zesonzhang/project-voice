@@ -72,6 +72,27 @@ All verification suites pass cleanly:
 - `npm run lint:js`: 0 errors
 - `npm run test:m1-prompts`: 10 templates × 21 fixtures verified
 - `npm run test:on-device-boundary`: production boundary checks passed
-- `uv run pytest`: 61 tests passed (100%)
-- `npm run test:js`: 223 Jasmine specs passed (0 failures)
+- `uv run pytest`: 61 tests passed (100%) [Expanded to 88 tests in M4]
+- `npm run test:js`: 223 Jasmine specs passed (0 failures) [Expanded to 261 specs in M4]
 - `npm run build`: builds frontend bundle, compiles requirements, builds inference worker, and syncs Wasm assets.
+
+---
+
+## Post-M3 Evolution & Domain Modularization Note
+
+Following Milestone 3 and Milestone 4 release hardening, the monolithic components in Milestone 3 were refactored into focused domain services in commit `a12c92a`:
+
+1. **UI Layer Decomposition (`src/pv-setting-panel.ts`):**
+   - Formatting and error-code mapping extracted to `src/on-device/ui-utils.ts`.
+   - Card and modal templates extracted to `src/on-device/model-card-template.ts`.
+   - Standalone `<pv-on-device-model-card>` custom element in `src/pv-on-device-model-card.ts`.
+2. **Domain ModelManager Decomposition (`src/on-device/model-manager.ts`):**
+   - Capability detection and quota verification extracted to `src/on-device/model-capabilities.ts`.
+   - HTTP Range resumable download and signed URL refresh extracted to `src/on-device/model-downloader.ts`.
+   - Local `.litertlm` file streaming import extracted to `src/on-device/model-importer.ts`.
+   - `ModelManager` serves as lifecycle coordinator and facade delegating to these services.
+3. **Suggestion Parsing & Test Doubles (`src/local-suggestion-provider.ts`):**
+   - Numbered-list parsing and Japanese text normalization extracted to `src/suggestion-parser.ts`.
+   - Test double `MockLocalSuggestionProvider` extracted to `src/tests/mock-suggestion-providers.ts`.
+4. **Current Verification Baseline:**
+   - Test suite currently maintains **261 Jasmine specs** and **88 Pytest tests** with zero failures and zero lint warnings.

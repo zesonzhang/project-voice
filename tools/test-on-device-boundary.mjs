@@ -27,6 +27,7 @@ await expectMissing('src/m0');
 assertDoesNotContain(packageJson.scripts.build, 'build:m0', 'build script');
 assertDoesNotContain(packageJson.scripts.watch, 'build:m0', 'watch script');
 assertDoesNotContain(localProvider, "'./m0/", 'Local provider');
+assertDoesNotContain(localProvider, "'./tests/", 'Local provider');
 
 for (const ignoredPath of [
   '/tools/m0-harness',

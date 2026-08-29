@@ -1,6 +1,5 @@
 import {CloudSuggestionProvider} from '../cloud-suggestion-provider.js';
 import {
-  MockLocalSuggestionProvider,
   normalizeLocalInput,
   parseSuggestionResponse,
 } from '../local-suggestion-provider.js';
@@ -15,6 +14,7 @@ import {
   SuggestionResult,
 } from '../suggestion-provider.js';
 import {SuggestionProviderRouter} from '../suggestion-provider-router.js';
+import {MockLocalSuggestionProvider} from './mock-suggestion-providers.js';
 
 const request: SuggestionRequest = {
   text: 'hello',

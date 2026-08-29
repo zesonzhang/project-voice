@@ -10,3 +10,7 @@ the same pinned LiteRT-LM release, but it is a development tool rather than a
 production runtime implementation.
 
 `npm run test:on-device-boundary` guards this separation in CI.
+
+For the complete implementation map, ownership boundaries, safe change
+recipes, and verification matrix, see
+[`docs/on-device-llm-maintenance.md`](../../docs/on-device-llm-maintenance.md).

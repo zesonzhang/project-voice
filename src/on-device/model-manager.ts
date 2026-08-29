@@ -14,61 +14,30 @@
  * limitations under the License.
  */
 
-import {StreamingSha256, verifyArtifactDigest} from './hash-verifier.js';
-import {ModelApiClient, SignedDownloadUrlResponse} from './model-client.js';
+import {verifyArtifactDigest} from './hash-verifier.js';
+import {checkCapabilities, PreflightCheckResult} from './model-capabilities.js';
+import {ModelApiClient} from './model-client.js';
+import {ModelDownloader} from './model-downloader.js';
+import {importLocalModel} from './model-importer.js';
+import {
+  DownloadProgress,
+  ModelErrorCode,
+  ModelLifecycleState,
+  ModelManagerError,
+} from './model-lifecycle.js';
 import {ModelManifest} from './model-manifest.js';
 import {ModelMetadataStore, ModelVersionRecord} from './model-metadata.js';
 import {ModelRuntimeAdapter} from './model-runtime-adapter.js';
 import {ModelStorage} from './model-storage.js';
 import {BrowserTabCoordinator, TabCoordinator} from './tab-coordinator.js';
 
-export type ModelLifecycleState =
-  | 'unsupported'
-  | 'not_downloaded'
-  | 'downloading'
-  | 'verifying'
-  | 'downloaded'
-  | 'loading'
-  | 'ready'
-  | 'generating'
-  | 'update_available'
-  | 'error';
-
-export type ModelErrorCode =
-  | 'ERR_WEBGPU_UNSUPPORTED'
-  | 'ERR_ADAPTER_UNSUPPORTED'
-  | 'ERR_STORAGE_UNSUPPORTED'
-  | 'ERR_INSUFFICIENT_STORAGE'
-  | 'ERR_PERSISTENCE_DENIED'
-  | 'ERR_DOWNLOAD_FAILED'
-  | 'ERR_URL_EXPIRED'
-  | 'ERR_RANGE_NOT_SATISFIABLE'
-  | 'ERR_GENERATION_MISMATCH'
-  | 'ERR_CHECKSUM_MISMATCH'
-  | 'ERR_LOAD_FAILED'
-  | 'ERR_SMOKE_TEST_FAILED'
-  | 'ERR_TAB_LOCKED';
-
-export interface PreflightCheckResult {
-  supported: boolean;
-  webgpuSupported: boolean;
-  opfsSupported: boolean;
-  workerSupported: boolean;
-  httpsOrLocal: boolean;
-  persistenceGranted: boolean;
-  quotaAvailableBytes: number;
-  quotaTotalBytes: number;
-  errorMessage?: string;
-  errorCode?: ModelErrorCode;
-}
-
-export interface DownloadProgress {
-  bytesDownloaded: number;
-  totalBytes: number;
-  percentage: number;
-  speedBps: number;
-  isResumed: boolean;
-}
+export {PreflightCheckResult} from './model-capabilities.js';
+export {
+  DownloadProgress,
+  ModelErrorCode,
+  ModelLifecycleState,
+  ModelManagerError,
+} from './model-lifecycle.js';
 
 export interface ModelManagerOptions {
   metadataStore: ModelMetadataStore;
@@ -105,16 +74,6 @@ export async function defaultModelCandidateProbe(
     return !(buffer.byteLength === 0 && manifest.sizeBytes > 0);
   } catch {
     return false;
-  }
-}
-
-class ModelManagerError extends Error {
-  constructor(
-    readonly code: ModelErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ModelManagerError';
   }
 }
 
@@ -188,9 +147,6 @@ export class ModelManager {
   private transitionHistory: StateTransitionRecord[] = [];
 
   private downloadAbortController: AbortController | null = null;
-  private currentSignedUrlInfo: SignedDownloadUrlResponse | null = null;
-  private currentSignedUrlKey: string | null = null;
-
   private readonly metadataStore: ModelMetadataStore;
   private readonly storage: ModelStorage;
   private readonly apiClient: ModelApiClient;
@@ -208,7 +164,7 @@ export class ModelManager {
   private readonly adapterChecker: (
     adapterId: string,
   ) => boolean | Promise<boolean>;
-  private readonly fetchImpl: typeof fetch;
+  private readonly downloader: ModelDownloader;
   private runtimeAdapter?: ModelRuntimeAdapter;
   private startupTask: Promise<void> | null = null;
   private startupAutoLoadRequested = false;
@@ -234,11 +190,13 @@ export class ModelManager {
     this.webgpuChecker = options.webgpuChecker;
     this.adapterChecker =
       options.adapterChecker || (adapterId => adapterId === 'litert-lm');
-    this.fetchImpl =
-      options.customFetch ||
-      (typeof fetch !== 'undefined'
-        ? fetch
-        : (null as unknown as typeof fetch));
+    this.downloader = new ModelDownloader({
+      storage: this.storage,
+      metadataStore: this.metadataStore,
+      apiClient: this.apiClient,
+      fetchImpl: options.customFetch,
+      onProgress: progress => this.reportDownloadProgress(progress),
+    });
 
     this.tabCoordinator.onMessage(msg => {
       if (
@@ -262,6 +220,23 @@ export class ModelManager {
           this.transitionTo(msg.state as ModelLifecycleState);
         }
       }
+    });
+  }
+
+  private reportDownloadProgress(progress: DownloadProgress): void {
+    for (const listener of this.progressListeners) {
+      listener(progress);
+    }
+    const manifest = this.activeManifest;
+    if (!manifest) return;
+    this.tabCoordinator.broadcastProgress({
+      type: 'DOWNLOAD_PROGRESS',
+      modelId: manifest.modelId,
+      version: manifest.version,
+      bytesDownloaded: progress.bytesDownloaded,
+      totalBytes: progress.totalBytes,
+      speedBps: progress.speedBps,
+      percentage: progress.percentage,
     });
   }
 
@@ -466,141 +441,11 @@ export class ModelManager {
     requiredSizeBytes?: number,
     adapterId = 'litert-lm',
   ): Promise<PreflightCheckResult> {
-    const isHttpsOrLocal =
-      typeof window !== 'undefined'
-        ? window.isSecureContext ||
-          location.hostname === 'localhost' ||
-          location.hostname === '127.0.0.1'
-        : true;
-
-    const opfsSupported =
-      typeof navigator !== 'undefined' && !!navigator.storage?.getDirectory;
-
-    const workerSupported = typeof Worker !== 'undefined';
-
-    let webgpuSupported = false;
-    if (this.webgpuChecker) {
-      try {
-        webgpuSupported = await this.webgpuChecker();
-      } catch {
-        webgpuSupported = false;
-      }
-    } else if (
-      typeof navigator !== 'undefined' &&
-      'gpu' in navigator &&
-      (navigator as {gpu?: {requestAdapter?: () => Promise<unknown>}}).gpu
-    ) {
-      try {
-        const gpu = (
-          navigator as {gpu?: {requestAdapter?: () => Promise<unknown>}}
-        ).gpu;
-        const adapter = await gpu?.requestAdapter?.();
-        webgpuSupported = !!adapter;
-      } catch {
-        webgpuSupported = false;
-      }
-    }
-
-    let quotaAvailable = Number.MAX_SAFE_INTEGER;
-    let quotaTotal = Number.MAX_SAFE_INTEGER;
-    if (this.quotaEstimator) {
-      try {
-        const est = await this.quotaEstimator();
-        quotaTotal = est.quota || Number.MAX_SAFE_INTEGER;
-        quotaAvailable = Math.max(0, (est.quota || 0) - (est.usage || 0));
-      } catch {
-        // Ignored
-      }
-    } else if (
-      typeof navigator !== 'undefined' &&
-      navigator.storage?.estimate
-    ) {
-      try {
-        const est = await navigator.storage.estimate();
-        quotaTotal = est.quota || Number.MAX_SAFE_INTEGER;
-        quotaAvailable = Math.max(0, (est.quota || 0) - (est.usage || 0));
-      } catch {
-        // Ignored
-      }
-    }
-
-    let persistenceGranted = false;
-    if (typeof navigator !== 'undefined' && navigator.storage?.persisted) {
-      try {
-        persistenceGranted = await navigator.storage.persisted();
-      } catch {
-        persistenceGranted = false;
-      }
-    }
-
-    let adapterSupported = false;
-    try {
-      adapterSupported = await this.adapterChecker(adapterId);
-    } catch {
-      adapterSupported = false;
-    }
-
-    if (
-      !isHttpsOrLocal ||
-      !opfsSupported ||
-      !workerSupported ||
-      !webgpuSupported ||
-      !adapterSupported
-    ) {
-      const missing: string[] = [];
-      if (!isHttpsOrLocal) missing.push('Secure context (HTTPS)');
-      if (!opfsSupported) missing.push('Origin Private File System (OPFS)');
-      if (!workerSupported) missing.push('Web Workers');
-      if (!webgpuSupported) missing.push('WebGPU adapter');
-      if (!adapterSupported) missing.push(`Runtime adapter (${adapterId})`);
-
-      return {
-        supported: false,
-        webgpuSupported,
-        opfsSupported,
-        workerSupported,
-        httpsOrLocal: isHttpsOrLocal,
-        persistenceGranted,
-        quotaAvailableBytes: quotaAvailable,
-        quotaTotalBytes: quotaTotal,
-        errorCode: !adapterSupported
-          ? 'ERR_ADAPTER_UNSUPPORTED'
-          : !webgpuSupported
-            ? 'ERR_WEBGPU_UNSUPPORTED'
-            : 'ERR_STORAGE_UNSUPPORTED',
-        errorMessage: `Hardware/browser capabilities missing: ${missing.join(', ')}`,
-      };
-    }
-
-    // Require model size + 20% headroom
-    if (requiredSizeBytes) {
-      const requiredWithHeadroom = requiredSizeBytes * 1.2;
-      if (quotaAvailable < requiredWithHeadroom) {
-        return {
-          supported: false,
-          webgpuSupported,
-          opfsSupported,
-          workerSupported,
-          httpsOrLocal: isHttpsOrLocal,
-          persistenceGranted,
-          quotaAvailableBytes: quotaAvailable,
-          quotaTotalBytes: quotaTotal,
-          errorCode: 'ERR_INSUFFICIENT_STORAGE',
-          errorMessage: `Insufficient disk quota. Required: ${Math.round(requiredWithHeadroom / 1e6)} MB, Available: ${Math.round(quotaAvailable / 1e6)} MB`,
-        };
-      }
-    }
-
-    return {
-      supported: true,
-      webgpuSupported,
-      opfsSupported,
-      workerSupported,
-      httpsOrLocal: isHttpsOrLocal,
-      persistenceGranted,
-      quotaAvailableBytes: quotaAvailable,
-      quotaTotalBytes: quotaTotal,
-    };
+    return checkCapabilities(requiredSizeBytes, adapterId, {
+      webgpuChecker: this.webgpuChecker,
+      quotaEstimator: this.quotaEstimator,
+      adapterChecker: this.adapterChecker,
+    });
   }
 
   /**
@@ -768,214 +613,7 @@ export class ModelManager {
         return;
       }
 
-      // Record initial metadata if missing
-      let versionRecord = await this.metadataStore.getVersion(
-        manifest.modelId,
-        manifest.version,
-      );
-      if (!versionRecord) {
-        versionRecord = {
-          modelId: manifest.modelId,
-          version: manifest.version,
-          manifest,
-          fileName: `${manifest.version}.litertlm`,
-          partialFileName: `${manifest.version}.partial`,
-          sizeBytes: manifest.sizeBytes,
-          sha256: manifest.sha256,
-          gcsGeneration: manifest.gcsGeneration,
-          downloadOffset: 0,
-          verificationState: 'unverified',
-          importStatus: 'certified',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          lastUsedAt: null,
-        };
-        await this.metadataStore.saveVersion(versionRecord);
-      } else if (
-        versionRecord.sizeBytes !== manifest.sizeBytes ||
-        versionRecord.sha256 !== manifest.sha256 ||
-        versionRecord.gcsGeneration !== manifest.gcsGeneration
-      ) {
-        // A version label may never silently point at different bytes.
-        await this.storage.deletePartial(manifest.modelId, manifest.version);
-        throw new Error(
-          'Stored metadata conflicts with the immutable model manifest',
-        );
-      }
-
-      // Check current partial file size in OPFS
-      let startOffset = await this.storage.getPartialSize(
-        manifest.modelId,
-        manifest.version,
-      );
-      if (startOffset > manifest.sizeBytes) {
-        // Corrupted oversized partial; reset
-        await this.storage.deletePartial(manifest.modelId, manifest.version);
-        startOffset = 0;
-        await this.metadataStore.updateDownloadOffset(
-          manifest.modelId,
-          manifest.version,
-          0,
-        );
-      }
-
-      // If already complete, jump straight to verification
-      if (startOffset === manifest.sizeBytes) {
-        await this.verifyAndPromote(manifest);
-        return;
-      }
-
-      // Get or refresh signed URL
-      let signedUrl = await this.getValidSignedUrl(manifest, abortSignal);
-
-      // Perform Range request
-      const headers: Record<string, string> = {};
-      if (startOffset > 0) {
-        headers['Range'] = `bytes=${startOffset}-`;
-      }
-
-      let response = await this.fetchImpl(signedUrl.url, {
-        method: 'GET',
-        headers,
-        signal: abortSignal,
-      });
-
-      // Handle URL expiration or refresh requirement
-      if (response.status === 403) {
-        signedUrl = await this.getValidSignedUrl(manifest, abortSignal, true);
-        response = await this.fetchImpl(signedUrl.url, {
-          method: 'GET',
-          headers,
-          signal: abortSignal,
-        });
-      }
-
-      // A stale local partial can be invalid after remote cleanup. Restart the
-      // exact immutable generation from zero on a 416 response.
-      if (startOffset > 0 && response.status === 416) {
-        await this.storage.deletePartial(manifest.modelId, manifest.version);
-        startOffset = 0;
-        await this.metadataStore.updateDownloadOffset(
-          manifest.modelId,
-          manifest.version,
-          0,
-        );
-        response = await this.fetchImpl(signedUrl.url, {
-          method: 'GET',
-          signal: abortSignal,
-        });
-      }
-
-      if (!response.ok && response.status !== 206) {
-        throw new Error(
-          `Download HTTP failed with status ${response.status} ${response.statusText}`,
-        );
-      }
-
-      // Check if server ignored Range header (returned 200 instead of 206)
-      if (startOffset > 0 && response.status === 200) {
-        // Server does not support Range or restarted from 0; reset local offset
-        await this.storage.deletePartial(manifest.modelId, manifest.version);
-        startOffset = 0;
-        await this.metadataStore.updateDownloadOffset(
-          manifest.modelId,
-          manifest.version,
-          0,
-        );
-      }
-
-      this.validateDownloadResponse(response, startOffset, manifest.sizeBytes);
-
-      if (!response.body) {
-        throw new Error('Response body is null, cannot stream download');
-      }
-
-      const reader = response.body.getReader();
-      let bytesDownloaded = startOffset;
-      let lastPersistTime = Date.now();
-      let lastPersistedOffset = startOffset;
-      let speedSampleBytes = 0;
-      let speedSampleTime = Date.now();
-      let currentSpeedBps = 0;
-
-      for (;;) {
-        const {done, value} = await reader.read();
-        if (done) break;
-
-        if (value && value.byteLength > 0) {
-          if (bytesDownloaded + value.byteLength > manifest.sizeBytes) {
-            throw new Error('Download exceeded the manifest size');
-          }
-          await this.storage.writeChunk(
-            manifest.modelId,
-            manifest.version,
-            value,
-            bytesDownloaded,
-          );
-          bytesDownloaded += value.byteLength;
-          speedSampleBytes += value.byteLength;
-
-          const now = Date.now();
-          const speedElapsed = now - speedSampleTime;
-          if (speedElapsed >= 1000) {
-            currentSpeedBps = Math.round(
-              (speedSampleBytes / speedElapsed) * 1000,
-            );
-            speedSampleBytes = 0;
-            speedSampleTime = now;
-          }
-
-          // Persist offset to IndexedDB periodically (every 1MB or 500ms)
-          if (
-            now - lastPersistTime >= 500 ||
-            bytesDownloaded - lastPersistedOffset >= 1024 * 1024 ||
-            bytesDownloaded === manifest.sizeBytes
-          ) {
-            await this.metadataStore.updateDownloadOffset(
-              manifest.modelId,
-              manifest.version,
-              bytesDownloaded,
-            );
-            lastPersistTime = now;
-            lastPersistedOffset = bytesDownloaded;
-          }
-
-          const percentage = Math.min(
-            100,
-            Math.round((bytesDownloaded / manifest.sizeBytes) * 100),
-          );
-
-          const progressMsg: DownloadProgress = {
-            bytesDownloaded,
-            totalBytes: manifest.sizeBytes,
-            percentage,
-            speedBps: currentSpeedBps,
-            isResumed: startOffset > 0,
-          };
-
-          for (const listener of this.progressListeners) {
-            listener(progressMsg);
-          }
-
-          this.tabCoordinator.broadcastProgress({
-            type: 'DOWNLOAD_PROGRESS',
-            modelId: manifest.modelId,
-            version: manifest.version,
-            bytesDownloaded,
-            totalBytes: manifest.sizeBytes,
-            speedBps: currentSpeedBps,
-            percentage,
-          });
-        }
-      }
-
-      if (bytesDownloaded !== manifest.sizeBytes) {
-        throw new Error(
-          `Download ended at ${bytesDownloaded} of ${manifest.sizeBytes} bytes`,
-        );
-      }
-
-      // Download completed; proceed to verification
+      await this.downloader.downloadArtifact(manifest, abortSignal);
       await this.verifyAndPromote(manifest);
     } catch (err: unknown) {
       if (abortSignal.aborted) {
@@ -988,111 +626,6 @@ export class ModelManager {
           err instanceof ModelManagerError ? err.code : 'ERR_DOWNLOAD_FAILED',
         message: `Download failed: ${message}`,
       });
-    }
-  }
-
-  private async getValidSignedUrl(
-    manifest: ModelManifest,
-    abortSignal: AbortSignal,
-    forceRefresh = false,
-  ): Promise<SignedDownloadUrlResponse> {
-    const now = Date.now();
-    const cacheKey = `${manifest.modelId}:${manifest.version}:${manifest.gcsGeneration}`;
-    if (
-      !forceRefresh &&
-      this.currentSignedUrlInfo &&
-      this.currentSignedUrlKey === cacheKey &&
-      Date.parse(this.currentSignedUrlInfo.expiresAt) - now > 60_000
-    ) {
-      return this.currentSignedUrlInfo;
-    }
-    const info = await this.apiClient.getSignedDownloadUrl(
-      manifest.modelId,
-      manifest.version,
-      abortSignal,
-    );
-    this.validateSignedUrlResponse(info, manifest);
-    this.currentSignedUrlInfo = info;
-    this.currentSignedUrlKey = cacheKey;
-    return info;
-  }
-
-  private validateSignedUrlResponse(
-    info: SignedDownloadUrlResponse,
-    manifest: ModelManifest,
-  ): void {
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(info.url);
-    } catch {
-      throw new ModelManagerError(
-        'ERR_GENERATION_MISMATCH',
-        'Backend returned an invalid signed download URL',
-      );
-    }
-    if (
-      parsedUrl.protocol !== 'https:' ||
-      info.gcsGeneration !== manifest.gcsGeneration ||
-      info.sizeBytes !== manifest.sizeBytes ||
-      info.sha256.toLowerCase() !== manifest.sha256.toLowerCase() ||
-      parsedUrl.searchParams.get('generation') !== manifest.gcsGeneration ||
-      !Number.isFinite(Date.parse(info.expiresAt)) ||
-      Date.parse(info.expiresAt) <= Date.now()
-    ) {
-      throw new ModelManagerError(
-        'ERR_GENERATION_MISMATCH',
-        'Signed URL metadata does not match the model manifest',
-      );
-    }
-  }
-
-  private validateDownloadResponse(
-    response: Response,
-    requestedOffset: number,
-    expectedSize: number,
-  ): void {
-    if (!response.ok && response.status !== 206) {
-      throw new Error(
-        `Download HTTP failed with status ${response.status} ${response.statusText}`,
-      );
-    }
-    if (response.status === 206) {
-      const contentRange = response.headers.get('Content-Range');
-      const match = contentRange?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
-      if (
-        !match ||
-        Number(match[1]) !== requestedOffset ||
-        Number(match[2]) < requestedOffset ||
-        Number(match[2]) >= expectedSize ||
-        Number(match[3]) !== expectedSize
-      ) {
-        throw new ModelManagerError(
-          'ERR_RANGE_NOT_SATISFIABLE',
-          `Invalid Content-Range response: ${contentRange}`,
-        );
-      }
-      const contentLength = response.headers.get('Content-Length');
-      const rangeLength = Number(match[2]) - Number(match[1]) + 1;
-      if (contentLength !== null && Number(contentLength) !== rangeLength) {
-        throw new ModelManagerError(
-          'ERR_RANGE_NOT_SATISFIABLE',
-          'Content-Length does not match Content-Range',
-        );
-      }
-    } else if (requestedOffset !== 0) {
-      throw new ModelManagerError(
-        'ERR_RANGE_NOT_SATISFIABLE',
-        'Server ignored a Range request without a safe restart',
-      );
-    }
-
-    const contentLength = response.headers.get('Content-Length');
-    if (
-      response.status === 200 &&
-      contentLength !== null &&
-      Number(contentLength) !== expectedSize
-    ) {
-      throw new Error('Content-Length does not match the model manifest');
     }
   }
 
@@ -1334,78 +867,10 @@ export class ModelManager {
    * probes and loads model, and marks active.
    */
   async importLocalModel(file: File): Promise<void> {
-    if (!file || file.size <= 0) {
-      throw new ModelManagerError('ERR_LOAD_FAILED', 'Invalid model file');
-    }
-    if (!file.name.toLowerCase().endsWith('.litertlm')) {
-      throw new ModelManagerError(
-        'ERR_LOAD_FAILED',
-        'Local model imports must use the .litertlm file extension.',
-      );
-    }
-    const modelId = 'imported';
-    const version = `v-${Date.now()}`;
-    const chunkSize = 2 * 1024 * 1024;
-    const hasher = new StreamingSha256();
-
-    let offset = 0;
-    while (offset < file.size) {
-      const slice = file.slice(offset, Math.min(file.size, offset + chunkSize));
-      const arrayBuffer = await slice.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      hasher.update(bytes);
-      await this.storage.writeChunk(modelId, version, bytes, offset);
-      offset += bytes.byteLength;
-    }
-    await this.storage.promotePartialToModel(modelId, version);
-    const sha256 = hasher.digest();
-
-    const manifest: ModelManifest = {
-      schemaVersion: 1,
-      modelId,
-      version,
-      displayName: file.name.replace(/\.litertlm$/, ''),
-      family: 'gemma',
-      adapterId: 'litert-lm',
-      format: 'litertlm',
-      sizeBytes: file.size,
-      sha256,
-      gcsGeneration: '0',
-      capabilities: {
-        textGeneration: true,
-        languages: ['en', 'ja', 'zh', 'fr', 'de', 'sv'],
-        maxInputTokens: 2048,
-        maxOutputTokens: 256,
-      },
-      requirements: {
-        webgpu: true,
-        minimumDeviceMemoryGB: 8,
-        minimumFreeStorageBytes: Math.round(file.size * 1.2),
-      },
-      generation: {
-        temperature: 0,
-        topP: 0.5,
-        maxOutputTokens: 256,
-      },
-    };
-
-    await this.metadataStore.saveVersion({
-      modelId,
-      version,
-      manifest,
-      fileName: `${version}.litertlm`,
-      partialFileName: `${version}.partial`,
-      sizeBytes: file.size,
-      sha256,
-      gcsGeneration: '0',
-      downloadOffset: file.size,
-      verificationState: 'verified',
-      importStatus: 'unverified_import',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      lastUsedAt: Date.now(),
+    await importLocalModel(file, {
+      storage: this.storage,
+      metadataStore: this.metadataStore,
+      activateCandidate: manifest => this.activateCandidate(manifest),
     });
-
-    await this.activateCandidate(manifest);
   }
 }
