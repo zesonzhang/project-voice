@@ -18,6 +18,14 @@ handlers:
 - url: /static
   static_dir: static
   secure: always
+  expiration: 1h
+  http_headers:
+    Cross-Origin-Opener-Policy: same-origin
+    Cross-Origin-Embedder-Policy: require-corp
+    Cross-Origin-Resource-Policy: same-origin
+    Content-Security-Policy: "default-src 'self'; base-uri 'none'; connect-src 'self' https://storage.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-ancestors 'none'; img-src 'self' data:; media-src 'self' blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; worker-src 'self'; form-action 'self'"
+    X-Content-Type-Options: nosniff
+    Referrer-Policy: no-referrer
 
 - url: /*
   script: auto
