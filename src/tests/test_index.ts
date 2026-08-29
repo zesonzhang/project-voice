@@ -26,3 +26,5 @@ import './test_model-manifest.js';
 import './test_model-storage.js';
 import './test_model-metadata.js';
 import './test_hash-verifier.js';
+import './test_model-manager.js';
+import './test_tab-coordinator.js';

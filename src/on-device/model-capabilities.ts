@@ -19,10 +19,14 @@ import {ModelErrorCode} from './model-lifecycle.js';
 export interface PreflightCheckResult {
   supported: boolean;
   webgpuSupported: boolean;
+  fallbackAdapter: boolean;
   opfsSupported: boolean;
   workerSupported: boolean;
   httpsOrLocal: boolean;
+  crossOriginIsolated: boolean;
   persistenceGranted: boolean;
+  deviceMemoryGB: number | null;
+  memoryWarning?: string;
   quotaAvailableBytes: number;
   quotaTotalBytes: number;
   errorCode?: ModelErrorCode;
@@ -31,6 +35,8 @@ export interface PreflightCheckResult {
 
 export interface CapabilitiesCheckers {
   webgpuChecker?: () => Promise<boolean>;
+  crossOriginIsolatedChecker?: () => boolean;
+  deviceMemoryChecker?: () => number | undefined;
   quotaEstimator?: () => Promise<{quota?: number; usage?: number}>;
   adapterChecker?: (adapterId: string) => boolean | Promise<boolean>;
 }
@@ -42,6 +48,10 @@ export async function checkCapabilities(
   requiredSizeBytes?: number,
   adapterId = 'litert-lm',
   checkers: CapabilitiesCheckers = {},
+  requirements: {
+    minimumDeviceMemoryGB?: number;
+    minimumFreeStorageBytes?: number;
+  } = {},
 ): Promise<PreflightCheckResult> {
   const isHttpsOrLocal =
     typeof window !== 'undefined'
@@ -54,8 +64,27 @@ export async function checkCapabilities(
     typeof navigator !== 'undefined' && !!navigator.storage?.getDirectory;
 
   const workerSupported = typeof Worker !== 'undefined';
+  const crossOriginIsolated = checkers.crossOriginIsolatedChecker
+    ? checkers.crossOriginIsolatedChecker()
+    : checkers.webgpuChecker
+      ? true
+      : typeof window === 'undefined' || window.crossOriginIsolated === true;
+
+  const deviceMemoryGB = checkers.deviceMemoryChecker
+    ? (checkers.deviceMemoryChecker() ?? null)
+    : typeof navigator === 'undefined'
+      ? null
+      : ((navigator as Navigator & {deviceMemory?: number}).deviceMemory ??
+        null);
+  const memoryWarning =
+    deviceMemoryGB !== null &&
+    requirements.minimumDeviceMemoryGB !== undefined &&
+    deviceMemoryGB < requirements.minimumDeviceMemoryGB
+      ? `Approximate device memory (${deviceMemoryGB} GB) is below the recommended minimum (${requirements.minimumDeviceMemoryGB} GB).`
+      : undefined;
 
   let webgpuSupported = false;
+  let fallbackAdapter = false;
   if (checkers.webgpuChecker) {
     try {
       webgpuSupported = await checkers.webgpuChecker();
@@ -71,8 +100,12 @@ export async function checkCapabilities(
       const gpu = (
         navigator as {gpu?: {requestAdapter?: () => Promise<unknown>}}
       ).gpu;
-      const adapter = await gpu?.requestAdapter?.();
-      webgpuSupported = !!adapter;
+      const adapter = (await gpu?.requestAdapter?.()) as
+        | {isFallbackAdapter?: boolean}
+        | null
+        | undefined;
+      fallbackAdapter = adapter?.isFallbackAdapter === true;
+      webgpuSupported = !!adapter && !fallbackAdapter;
     } catch {
       webgpuSupported = false;
     }
@@ -124,6 +157,7 @@ export async function checkCapabilities(
     !opfsSupported ||
     !workerSupported ||
     !webgpuSupported ||
+    !crossOriginIsolated ||
     !adapterSupported
   ) {
     const missing: string[] = [];
@@ -131,15 +165,21 @@ export async function checkCapabilities(
     if (!opfsSupported) missing.push('Origin Private File System (OPFS)');
     if (!workerSupported) missing.push('Web Workers');
     if (!webgpuSupported) missing.push('WebGPU adapter');
+    if (fallbackAdapter) missing.push('Hardware WebGPU adapter');
+    if (!crossOriginIsolated) missing.push('Cross-origin isolation');
     if (!adapterSupported) missing.push(`Runtime adapter (${adapterId})`);
 
     return {
       supported: false,
       webgpuSupported,
+      fallbackAdapter,
       opfsSupported,
       workerSupported,
       httpsOrLocal: isHttpsOrLocal,
+      crossOriginIsolated,
       persistenceGranted,
+      deviceMemoryGB,
+      memoryWarning,
       quotaAvailableBytes: quotaAvailable,
       quotaTotalBytes: quotaTotal,
       errorCode: !adapterSupported
@@ -152,16 +192,23 @@ export async function checkCapabilities(
   }
 
   // Require model size + 20% headroom
-  if (requiredSizeBytes) {
-    const requiredWithHeadroom = requiredSizeBytes * 1.2;
+  if (requiredSizeBytes || requirements.minimumFreeStorageBytes) {
+    const requiredWithHeadroom = Math.max(
+      (requiredSizeBytes ?? 0) * 1.2,
+      requirements.minimumFreeStorageBytes ?? 0,
+    );
     if (quotaAvailable < requiredWithHeadroom) {
       return {
         supported: false,
         webgpuSupported,
+        fallbackAdapter,
         opfsSupported,
         workerSupported,
         httpsOrLocal: isHttpsOrLocal,
+        crossOriginIsolated,
         persistenceGranted,
+        deviceMemoryGB,
+        memoryWarning,
         quotaAvailableBytes: quotaAvailable,
         quotaTotalBytes: quotaTotal,
         errorCode: 'ERR_INSUFFICIENT_STORAGE',
@@ -173,10 +220,14 @@ export async function checkCapabilities(
   return {
     supported: true,
     webgpuSupported,
+    fallbackAdapter,
     opfsSupported,
     workerSupported,
     httpsOrLocal: isHttpsOrLocal,
+    crossOriginIsolated,
     persistenceGranted,
+    deviceMemoryGB,
+    memoryWarning,
     quotaAvailableBytes: quotaAvailable,
     quotaTotalBytes: quotaTotal,
   };
