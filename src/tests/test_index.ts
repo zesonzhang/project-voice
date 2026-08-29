@@ -23,3 +23,4 @@ import './test_state.js';
 import './test_language.js';
 import './test_suggestion-providers.js';
 import './test_model-manifest.js';
+import './test_model-storage.js';
