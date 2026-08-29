@@ -50,9 +50,14 @@ import {
   STEGANA_INVERT,
 } from './keyboards/pv-fifty-key-keyboard.js';
 import {LANGUAGES} from './language.js';
-import {UnavailableLocalSuggestionProvider} from './local-suggestion-provider.js';
+import {LocalSuggestionProvider} from './local-suggestion-provider.js';
 import {sourceLocale, targetLocales} from './locale-codes.js';
 import * as jaModule from './locales/ja.js';
+import {HttpModelApiClient} from './on-device/model-client.js';
+import {ModelManager} from './on-device/model-manager.js';
+import {IndexedDbModelMetadataStore} from './on-device/model-metadata.js';
+import {OpfsModelStorage} from './on-device/model-storage.js';
+import {InferenceWorkerClient} from './on-device/worker-client.js';
 import {pvAppStyle} from './pv-app-css.js';
 import type {CharacterSelectEvent} from './pv-expand-keypad.js';
 import type {PvFunctionsBar} from './pv-functions-bar.js';
@@ -313,17 +318,38 @@ export class PvAppElement extends SignalWatcher(LitElement) {
   private speechRecognition?: SpeechRecognition;
   private isSpeechRecognitionActive = false;
 
+  readonly modelManager: ModelManager;
+
   constructor(
     state: State | null = null,
     providers: SuggestionProviderRouter | null = null,
+    modelManager: ModelManager | null = null,
   ) {
     super();
     this.stateInternal = state ?? new State();
+    this.modelManager =
+      modelManager ??
+      new ModelManager({
+        metadataStore: new IndexedDbModelMetadataStore(),
+        storage: new OpfsModelStorage(),
+        apiClient: new HttpModelApiClient(),
+        runtimeAdapter: new InferenceWorkerClient(),
+      });
     this.providers =
       providers ??
       new SuggestionProviderRouter(
         () => new CloudSuggestionProvider(),
-        new UnavailableLocalSuggestionProvider(),
+        new LocalSuggestionProvider(
+          this.modelManager.getRuntimeAdapter() ?? new InferenceWorkerClient(),
+          () => {
+            const manifest = this.modelManager.getActiveManifest();
+            return {
+              modelId: manifest?.modelId ?? 'gemma-4-E2B-it-web',
+              modelVersion: manifest?.version ?? 'default',
+            };
+          },
+          () => this.modelManager.getState() === 'ready',
+        ),
       );
   }
 
@@ -388,6 +414,9 @@ export class PvAppElement extends SignalWatcher(LitElement) {
   @property({type: Boolean, attribute: 'feature-enable-sentence-emotion'})
   private featureEnableSentenceEmotion = false;
 
+  @property({type: Boolean, attribute: 'feature-enable-local-model-import'})
+  private featureEnableLocalModelImport = false;
+
   @query('pv-sentence-type-selector')
   private sentenceTypeSelector?: PvSentenceTypeSelectorElement;
 
@@ -440,6 +469,12 @@ export class PvAppElement extends SignalWatcher(LitElement) {
     this.stateInternal.updateInitialPhrasesForCurrentLanguage();
 
     this.emotions = this.stateInternal.lang.emotions;
+
+    if (this.stateInternal.inferenceMode === 'local') {
+      void this.modelManager.startup(true).catch(error => {
+        console.error('Failed to restore the on-device model.', error);
+      });
+    }
   }
 
   updated(changedProps: Map<string, unknown>) {
@@ -776,6 +811,16 @@ export class PvAppElement extends SignalWatcher(LitElement) {
         mode !== this.stateInternal.inferenceMode
       ) {
         return;
+      }
+      if (result.provider === 'local') {
+        try {
+          await this.modelManager.confirmActiveVersionHealthy();
+        } catch (error) {
+          console.error(
+            'Local suggestion succeeded, but model cleanup failed.',
+            error,
+          );
+        }
       }
       const sentences = result.sentences.map(
         s =>
@@ -1114,6 +1159,8 @@ export class PvAppElement extends SignalWatcher(LitElement) {
       <pv-snackbar @closed=${this.onSnackbarClose}></pv-snackbar>
       <pv-setting-panel
         .state=${this.stateInternal}
+        .modelManager=${this.modelManager}
+        .enableDebugModelImport=${this.featureEnableLocalModelImport}
         @ok-click=${this.onOkClick}
       ></pv-setting-panel>
     `;

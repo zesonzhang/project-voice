@@ -27,7 +27,10 @@ import {
 } from './model-lifecycle.js';
 import {ModelManifest} from './model-manifest.js';
 import {ModelMetadataStore, ModelVersionRecord} from './model-metadata.js';
-import {ModelRuntimeAdapter} from './model-runtime-adapter.js';
+import {
+  ModelRuntimeAdapter,
+  RuntimeStatusEvent,
+} from './model-runtime-adapter.js';
 import {ModelStorage} from './model-storage.js';
 import {BrowserTabCoordinator, TabCoordinator} from './tab-coordinator.js';
 
@@ -170,6 +173,7 @@ export class ModelManager {
   ) => boolean | Promise<boolean>;
   private readonly downloader: ModelDownloader;
   private runtimeAdapter?: ModelRuntimeAdapter;
+  private runtimeStatusUnsubscribe?: () => void;
   private startupTask: Promise<void> | null = null;
   private startupAutoLoadRequested = false;
 
@@ -187,6 +191,7 @@ export class ModelManager {
     this.storage = options.storage;
     this.apiClient = options.apiClient;
     this.runtimeAdapter = options.runtimeAdapter;
+    this.bindRuntimeAdapter();
     this.tabCoordinator = options.tabCoordinator || new BrowserTabCoordinator();
     this.smokeTestHook = options.smokeTestHook || defaultModelCandidateProbe;
     this.persistenceRequester = options.persistenceRequester;
@@ -247,7 +252,32 @@ export class ModelManager {
   }
 
   setRuntimeAdapter(adapter: ModelRuntimeAdapter): void {
+    this.runtimeStatusUnsubscribe?.();
     this.runtimeAdapter = adapter;
+    this.bindRuntimeAdapter();
+  }
+
+  private bindRuntimeAdapter(): void {
+    this.runtimeStatusUnsubscribe = this.runtimeAdapter?.onStatusChange(event =>
+      this.handleRuntimeStatus(event),
+    );
+  }
+
+  private handleRuntimeStatus(event: RuntimeStatusEvent): void {
+    if (event.status === 'generating' && this.state === 'ready') {
+      this.transitionTo('generating');
+      return;
+    }
+    if (event.status === 'ready' && this.state === 'generating') {
+      this.transitionTo('ready');
+      return;
+    }
+    if (event.status === 'error') {
+      this.transitionTo('error', {
+        code: 'ERR_LOAD_FAILED',
+        message: event.errorMessage || 'On-device runtime failed.',
+      });
+    }
   }
 
   getRuntimeAdapter(): ModelRuntimeAdapter | undefined {
