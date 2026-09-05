@@ -18,6 +18,7 @@ import {Config, ConfigStorage} from '../config-storage.js';
 
 export const TEST_CONFIG: Config = {
   aiConfig: 'gemini_3_flash',
+  inferenceMode: 'cloud',
   checkedLanguages: ['japaneseWithSingleRowKeyboard'],
   enableConversationMode: false,
   enableEarcons: false,
@@ -63,6 +64,11 @@ describe('UsaStorage', () => {
       expect(storage.read('voicePitch')).toEqual(0);
       expect(storage.read('initialPhrases')).toEqual(['I', 'You', 'They']);
       expect(storage.read('voicePrompt')).toEqual('Whisper');
+    });
+
+    it('defaults a missing inference mode to Cloud', () => {
+      const storage = new ConfigStorage('test', TEST_CONFIG);
+      expect(storage.read('inferenceMode')).toBe('cloud');
     });
   });
 });

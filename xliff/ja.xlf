@@ -22,10 +22,6 @@
   <source>General</source>
   <target>一般</target>
 </trans-unit>
-<trans-unit id="se127d1b851b56845">
-  <source>Initial phrases</source>
-  <target>初期フレーズ</target>
-</trans-unit>
 <trans-unit id="sb061ff5a347a296e">
   <source>Profile</source>
   <target>プロフィール</target>
@@ -57,10 +53,6 @@
 <trans-unit id="sb4f1dffbb6be6302">
   <source>Clear</source>
   <target>すべて削除</target>
-</trans-unit>
-<trans-unit id="s09085b07b5a0de5f">
-  <source>AI</source>
-  <target>AI設定</target>
 </trans-unit>
 <trans-unit id="sb46606bea7e65177">
   <source>Speaking rate</source>
@@ -116,6 +108,366 @@
 <trans-unit id="s494227fc6909956f">
   <source>Open and close conversation</source>
   <target>会話パネルを開く/閉じる</target>
+</trans-unit>
+<trans-unit id="sbd72ef798f281712">
+  <source>French (experimental)</source>
+  <target>フランス語（試験運用）</target>
+</trans-unit>
+<trans-unit id="s408eb983f697801c">
+  <source>German (experimental)</source>
+  <target>ドイツ語（試験運用）</target>
+</trans-unit>
+<trans-unit id="s5f836100f0c5709f">
+  <source>Swedish (experimental)</source>
+  <target>スウェーデン語（試験運用）</target>
+</trans-unit>
+<trans-unit id="s579d06c51e72b5a8">
+  <source>Mandarin (single-row keyboard)</source>
+  <target>中国語（1 行キーボード）</target>
+</trans-unit>
+<trans-unit id="sdb0a5c6a36151732">
+  <source>Hardware Unsupported</source>
+  <target>ハードウェア非対応</target>
+</trans-unit>
+<trans-unit id="s4a10bb824172bba6">
+  <source>Download Required</source>
+  <target>ダウンロードが必要</target>
+</trans-unit>
+<trans-unit id="s25250c555b37c663">
+  <source>Downloading...</source>
+  <target>ダウンロード中...</target>
+</trans-unit>
+<trans-unit id="s49db15d65a14ff63">
+  <source>Verifying Checksum...</source>
+  <target>チェックサムを検証中...</target>
+</trans-unit>
+<trans-unit id="s975c066ba80b08c7">
+  <source>Ready to Load</source>
+  <target>読み込み可能</target>
+</trans-unit>
+<trans-unit id="scd8815a13e8cc331">
+  <source>Loading into WebGPU...</source>
+  <target>WebGPU に読み込み中...</target>
+</trans-unit>
+<trans-unit id="s754cc39685e21585">
+  <source>Ready (Active)</source>
+  <target>使用可能（有効）</target>
+</trans-unit>
+<trans-unit id="s8bf481a0b5d8a689">
+  <source>Generating...</source>
+  <target>生成中...</target>
+</trans-unit>
+<trans-unit id="s6811b9e936c485bf">
+  <source>Update Available</source>
+  <target>更新あり</target>
+</trans-unit>
+<trans-unit id="s5f343a43e7ea9f91">
+  <source>Error</source>
+  <target>エラー</target>
+</trans-unit>
+<trans-unit id="s0ff57e6292f597c4">
+  <source>WebGPU is not supported or device was lost on this system.</source>
+  <target>このシステムは WebGPU に対応していないか、デバイスとの接続が失われました。</target>
+</trans-unit>
+<trans-unit id="sae51a8a72e6e78f7">
+  <source>Insufficient storage space to download model. Please free up disk space.</source>
+  <target>モデルをダウンロードする空き容量が不足しています。ディスク容量を確保してください。</target>
+</trans-unit>
+<trans-unit id="sc9eb9d0c90fa779d">
+  <source>Failed to download model artifact. Check your network connection.</source>
+  <target>モデルのダウンロードに失敗しました。ネットワーク接続を確認してください。</target>
+</trans-unit>
+<trans-unit id="s5f2d60d686b2371a">
+  <source>Model integrity check failed. The downloaded file may be corrupted.</source>
+  <target>モデルの整合性確認に失敗しました。ダウンロードしたファイルが破損している可能性があります。</target>
+</trans-unit>
+<trans-unit id="sc3f6cbf16031672a">
+  <source>Failed to load model into WebGPU runtime.</source>
+  <target>モデルを WebGPU ランタイムに読み込めませんでした。</target>
+</trans-unit>
+<trans-unit id="sceede77e87847a38">
+  <source>Activation smoke test failed. Model output could not be verified.</source>
+  <target>有効化テストに失敗し、モデルの出力を確認できませんでした。</target>
+</trans-unit>
+<trans-unit id="s548fb324404c9cd2">
+  <source>Model is currently in use or downloading in another browser tab.</source>
+  <target>別のブラウザタブでモデルを使用中またはダウンロード中です。</target>
+</trans-unit>
+<trans-unit id="seff65e6708d2111a">
+  <source>An error occurred with on-device inference.</source>
+  <target>デバイス上の推論でエラーが発生しました。</target>
+</trans-unit>
+<trans-unit id="sade46cc9525d7f1a">
+  <source>When On-device is selected, suggestion text is not sent to Gemini.</source>
+  <target>「デバイス上」を選択すると、候補生成用のテキストは Gemini に送信されません。</target>
+</trans-unit>
+<trans-unit id="sd3386a2ef42e80b9">
+  <source>Download</source>
+  <target>ダウンロード</target>
+</trans-unit>
+<trans-unit id="s2aed0d1e6eeec5ad">
+  <source>Cancel Download</source>
+  <target>ダウンロードをキャンセル</target>
+</trans-unit>
+<trans-unit id="s75dcd55804f43808">
+  <source>Load Model</source>
+  <target>モデルを読み込む</target>
+</trans-unit>
+<trans-unit id="s5d3714bc882df1b2">
+  <source>Unload</source>
+  <target>メモリから解放</target>
+</trans-unit>
+<trans-unit id="s8b0432eecbd8b034">
+  <source>Update</source>
+  <target>更新</target>
+</trans-unit>
+<trans-unit id="s2c8189544e3ea679">
+  <source>Retry</source>
+  <target>再試行</target>
+</trans-unit>
+<trans-unit id="sea4f08110bb8f15d">
+  <source>Remove</source>
+  <target>削除</target>
+</trans-unit>
+<trans-unit id="sb78a66c8b3d23215">
+  <source>Checking...</source>
+  <target>確認中...</target>
+</trans-unit>
+<trans-unit id="s0c2d622bae70cc06">
+  <source>Check for Updates</source>
+  <target>更新を確認</target>
+</trans-unit>
+<trans-unit id="sb5c47d4606959c5a">
+  <source>Import Local Model</source>
+  <target>ローカルモデルを読み込む</target>
+</trans-unit>
+<trans-unit id="s9c29d99ed54ed7e3">
+  <source>Resource &amp; Diagnostics</source>
+  <target>リソースと診断</target>
+</trans-unit>
+<trans-unit id="s702c62e5444432ff">
+  <source>Logical CPUs</source>
+  <target>論理 CPU 数</target>
+</trans-unit>
+<trans-unit id="sded0897c5ed3f0dd">
+  <source>Approx Device RAM</source>
+  <target>端末の概算 RAM</target>
+</trans-unit>
+<trans-unit id="sa7577e67a0e422f4">
+  <source>OPFS Storage Quota</source>
+  <target>OPFS ストレージ上限</target>
+</trans-unit>
+<trans-unit id="sbea0365651b363f9">
+  <source>OPFS Storage Used</source>
+  <target>OPFS 使用量</target>
+</trans-unit>
+<trans-unit id="s39e46f61e84541d3">
+  <source>Model State</source>
+  <target>モデルの状態</target>
+</trans-unit>
+<trans-unit id="sa620a627b6f20793">
+  <source>Model Activity</source>
+  <target>モデル稼働率</target>
+</trans-unit>
+<trans-unit id="s387d0184fd4ecbb3">
+  <source>Last Latency</source>
+  <target>直近の所要時間</target>
+</trans-unit>
+<trans-unit id="s437d778f76d9fe7f">
+  <source>Throughput</source>
+  <target>処理速度</target>
+</trans-unit>
+<trans-unit id="s18881142cbebc8c9">
+  <source>Inference Source</source>
+  <target>推論の実行場所</target>
+</trans-unit>
+<trans-unit id="scf60d757db5f937c">
+  <source>Cloud (Gemini)</source>
+  <target>クラウド（Gemini）</target>
+</trans-unit>
+<trans-unit id="s1dae18a818f2a26d">
+  <source>On-device</source>
+  <target>デバイス上</target>
+</trans-unit>
+<trans-unit id="s1b381a591cf778d5">
+  <source>Cloud AI Model</source>
+  <target>クラウド AI モデル</target>
+</trans-unit>
+<trans-unit id="s9aacc2c1a3396f90">
+  <source>Remove Local Model?</source>
+  <target>ローカルモデルを削除しますか？</target>
+</trans-unit>
+<trans-unit id="s2ceb11be2290bb1b">
+  <source>Cancel</source>
+  <target>キャンセル</target>
+</trans-unit>
+<trans-unit id="s2fa896fe8b4b55cf">
+  <source>This model format is not compatible with the installed runtime.</source>
+  <target>このモデル形式はインストール済みのランタイムと互換性がありません。</target>
+</trans-unit>
+<trans-unit id="sb4e6c4a7c07f2a36">
+  <source>Persistent browser storage is unavailable. Check site permissions.</source>
+  <target>ブラウザの永続ストレージを使用できません。サイトの権限を確認してください。</target>
+</trans-unit>
+<trans-unit id="s90a644b461822033">
+  <source>Persistent storage was denied. Free space or update site permissions, then retry.</source>
+  <target>永続ストレージが拒否されました。空き容量またはサイトの権限を確認して、再試行してください。</target>
+</trans-unit>
+<trans-unit id="s94f29afdd10af776">
+  <source>The download link expired. Retry to request a new link.</source>
+  <target>ダウンロードリンクの有効期限が切れました。再試行して新しいリンクを取得してください。</target>
+</trans-unit>
+<trans-unit id="s97e37e7b0b548a09">
+  <source>The partial download cannot be resumed safely. Retry the download.</source>
+  <target>中断したダウンロードを安全に再開できません。ダウンロードを再試行してください。</target>
+</trans-unit>
+<trans-unit id="sc14991c6fb0c6f5b">
+  <source>The downloaded model version changed. Check for updates.</source>
+  <target>ダウンロード対象のモデルバージョンが変更されました。更新を確認してください。</target>
+</trans-unit>
+<trans-unit id="s80d54d4be24b2236">
+  <source>New version available: <x id="0" equiv-text="${update.version}"/></source>
+  <target>新しいバージョンがあります: <x id="0" equiv-text="${update.version}"/></target>
+</trans-unit>
+<trans-unit id="s95c532ff87fb026e">
+  <source>Model is up to date.</source>
+  <target>モデルは最新です。</target>
+</trans-unit>
+<trans-unit id="sb25ce21f394f7858">
+  <source>Could not check for updates.</source>
+  <target>更新を確認できませんでした。</target>
+</trans-unit>
+<trans-unit id="sc592307ea80f16b9">
+  <source>Unknown</source>
+  <target>不明</target>
+</trans-unit>
+<trans-unit id="s976f6be03fec1394">
+  <source>Gemma On-device</source>
+  <target>デバイス上の Gemma</target>
+</trans-unit>
+<trans-unit id="sa3c9339de23c1752">
+  <source>Format</source>
+  <target>形式</target>
+</trans-unit>
+<trans-unit id="sf4122b220926be97">
+  <source>Version</source>
+  <target>バージョン</target>
+</trans-unit>
+<trans-unit id="s78789724e789221c">
+  <source>Size</source>
+  <target>サイズ</target>
+</trans-unit>
+<trans-unit id="sfe211545fd02f73e">
+  <source>Verification</source>
+  <target>検証</target>
+</trans-unit>
+<trans-unit id="s65caa4480c85d8eb">
+  <source>Unverified import</source>
+  <target>未認証の読み込み</target>
+</trans-unit>
+<trans-unit id="s1b1b2cebfac4af06">
+  <source>Checksum verified</source>
+  <target>チェックサム確認済み</target>
+</trans-unit>
+<trans-unit id="s942d9eaaa76ddf86">
+  <source>Resume Download</source>
+  <target>ダウンロードを再開</target>
+</trans-unit>
+<trans-unit id="s0389fd0cf1a980cf">
+  <source>Switch to Cloud</source>
+  <target>クラウドに切り替える</target>
+</trans-unit>
+<trans-unit id="sa10bdf5a08e92a7b">
+  <source>Runtime Backend</source>
+  <target>ランタイムのバックエンド</target>
+</trans-unit>
+<trans-unit id="s145e0b559b6148ed">
+  <source>Page Memory</source>
+  <target>ページのメモリ</target>
+</trans-unit>
+<trans-unit id="s43e9aef7aa01fca9">
+  <source>Unavailable</source>
+  <target>利用不可</target>
+</trans-unit>
+<trans-unit id="s383de319c4012f21">
+  <source>N/A</source>
+  <target>該当なし</target>
+</trans-unit>
+<trans-unit id="sde96c07df45da349">
+  <source>Family</source>
+  <target>ファミリー</target>
+</trans-unit>
+<trans-unit id="sdf33eb4bcbe476f9">
+  <source>WebGPU</source>
+  <target>WebGPU</target>
+</trans-unit>
+<trans-unit id="sd158a5fc0f062f18">
+  <source>Available</source>
+  <target>利用可能</target>
+</trans-unit>
+<trans-unit id="s6f61ce9d4f096b02">
+  <source>Hardware adapter</source>
+  <target>ハードウェア アダプター</target>
+</trans-unit>
+<trans-unit id="scdf22be39f79007b">
+  <source>Fallback only</source>
+  <target>フォールバックのみ</target>
+</trans-unit>
+<trans-unit id="sf49525241bba3b06">
+  <source>Storage</source>
+  <target>ストレージ</target>
+</trans-unit>
+<trans-unit id="sc8523d9464ee59f2">
+  <source>Insufficient</source>
+  <target>不足</target>
+</trans-unit>
+<trans-unit id="sea631f6ddcd138d7">
+  <source>Device RAM</source>
+  <target>デバイスの RAM</target>
+</trans-unit>
+<trans-unit id="sbb290cb00f30d44d">
+  <source>New local model installations are paused by rollout policy. Existing local models remain available.</source>
+  <target>ロールアウト ポリシーにより、新しいローカルモデルのインストールは一時停止されています。既存のローカルモデルは引き続き利用できます。</target>
+</trans-unit>
+<trans-unit id="sdff45f8154b539dd">
+  <source>Model download progress</source>
+  <target>モデルのダウンロード進行状況</target>
+</trans-unit>
+<trans-unit id="se93b7983b39765b3">
+  <source>Recent Average Latency</source>
+  <target>最近の平均レイテンシ</target>
+</trans-unit>
+<trans-unit id="s93c5f7e2245df32d">
+  <source>Memory is measured for this page and its workers when supported; browser GPU allocations are not included.</source>
+  <target>対応している場合、このページとそのワーカーのメモリを測定します。ブラウザの GPU 割り当ては含まれません。</target>
+</trans-unit>
+<trans-unit id="s6a67fbe792a0799f">
+  <source>Running local inference in multiple tabs at the same time is not supported.</source>
+  <target>複数のタブでローカル推論を同時に実行することはサポートされていません。</target>
+</trans-unit>
+<trans-unit id="s9710352284378053">
+  <source>Export privacy-safe diagnostics report</source>
+  <target>プライバシーに配慮した診断レポートをエクスポート</target>
+</trans-unit>
+<trans-unit id="s59ef30f7b36fb330">
+  <source>Export Diagnostics (JSON)</source>
+  <target>診断情報をエクスポート（JSON）</target>
+</trans-unit>
+<trans-unit id="se127d1b851b56845">
+  <source>Initial phrases</source>
+  <target>初期フレーズ</target>
+</trans-unit>
+<trans-unit id="s45c1e36b4da93431">
+  <source>On-device activation is not available for this rollout.</source>
+  <target>このロールアウトではオンデバイスの有効化を利用できません。</target>
+</trans-unit>
+<trans-unit id="se7d73b71069351ad">
+  <source>This will delete the downloaded model weights from your device and free storage space. You can download it again at any time.</source>
+  <target>ダウンロードしたモデルの重みをデバイスから削除し、ストレージの空き容量を増やします。モデルはいつでも再ダウンロードできます。</target>
+</trans-unit>
+<trans-unit id="s07aa555b2977b564">
+  <source>Remove Model</source>
+  <target>モデルを削除</target>
 </trans-unit>
 
 </body>

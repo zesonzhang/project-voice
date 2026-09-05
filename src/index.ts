@@ -15,3 +15,10 @@
  */
 
 import './pv-app.js';
+
+// Publish non-sensitive security capability state for diagnostics and E2E
+// release gates. No user or model data is included.
+document.documentElement.dataset.crossOriginIsolated = String(
+  self.crossOriginIsolated,
+);
+document.documentElement.dataset.secureContext = String(self.isSecureContext);

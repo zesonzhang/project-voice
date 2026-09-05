@@ -19,6 +19,8 @@ import {CONFIG_DEFAULT} from '../constants.js';
 import {LANGUAGES} from '../language.js';
 import {TEST_ONLY} from '../pv-app.js';
 import {State} from '../state.js';
+import {SuggestionProviderRouter} from '../suggestion-provider-router.js';
+import {MockLocalSuggestionProvider} from './mock-suggestion-providers.js';
 import {TEST_CONFIG} from './test_config-storage.js';
 
 describe('USA App', () => {
@@ -415,6 +417,145 @@ describe('PvAppElement', () => {
         TEST_CONFIG.voiceSpeakingRate,
       );
       expect(element.state.lang.code).toBe('ja-JP');
+    });
+
+    it('makes no network request for Local typing and cancellation', async () => {
+      const storage = new ConfigStorage('test', TEST_CONFIG);
+      const state = new State(storage);
+      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
+      state.inferenceMode = 'local';
+      const fetchSpy = spyOn(window, 'fetch');
+      let cloudInstantiations = 0;
+      const local = new MockLocalSuggestionProvider(
+        (_prompt, signal) =>
+          new Promise((resolve, reject) => {
+            const timer = window.setTimeout(() => resolve('1. Local only'), 1);
+            signal.addEventListener('abort', () => {
+              window.clearTimeout(timer);
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          }),
+      );
+      const router = new SuggestionProviderRouter(() => {
+        cloudInstantiations++;
+        throw new Error('Cloud must not be instantiated');
+      }, local);
+      const element = new TEST_ONLY.PvAppElement(state, router);
+
+      state.text = 'first';
+      void element.updateSuggestions();
+      await new Promise(resolve => window.setTimeout(resolve, 0));
+      state.text = 'second';
+      void element.updateSuggestions();
+      await new Promise(resolve => window.setTimeout(resolve, 200));
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(cloudInstantiations).toBe(0);
+      expect(element.suggestions.map(item => item.value)).toEqual([
+        'Local only',
+      ]);
+    });
+
+    it('makes no network request when production Local is unavailable', async () => {
+      const storage = new ConfigStorage('test', TEST_CONFIG);
+      const state = new State(storage);
+      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
+      state.inferenceMode = 'local';
+      state.text = 'private text';
+      const fetchSpy = spyOn(window, 'fetch');
+      const alertSpy = spyOn(window, 'alert');
+      const element = new TEST_ONLY.PvAppElement(state);
+
+      void element.updateSuggestions();
+      await new Promise(resolve => window.setTimeout(resolve, 0));
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Local model is not loaded or ready.',
+      );
+    });
+
+    it('discards delayed in-flight suggestions when newer input advances sequence ID (Gate 3)', async () => {
+      const storage = new ConfigStorage('test', TEST_CONFIG);
+      const state = new State(storage);
+      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
+      state.inferenceMode = 'local';
+
+      const firstResolvers: Array<(value: string) => void> = [];
+      const secondResolvers: Array<(value: string) => void> = [];
+
+      const local = new MockLocalSuggestionProvider(async prompt => {
+        if (prompt.includes('first')) {
+          return new Promise<string>(resolve => {
+            firstResolvers.push(resolve);
+          });
+        } else {
+          return new Promise<string>(resolve => {
+            secondResolvers.push(resolve);
+          });
+        }
+      });
+      const router = new SuggestionProviderRouter(() => {
+        throw new Error('Cloud should not be called');
+      }, local);
+      const element = new TEST_ONLY.PvAppElement(state, router);
+
+      // Trigger first suggestion request
+      state.text = 'first';
+      void element.updateSuggestions();
+      // Fast forward past debounce timer
+      await new Promise(resolve => window.setTimeout(resolve, 10));
+
+      // Trigger second suggestion request (advancing sequence ID)
+      state.text = 'second';
+      void element.updateSuggestions();
+      // Wait for debounce timer (up to 150-300ms) to dispatch
+      await new Promise(resolve => window.setTimeout(resolve, 250));
+
+      // Resolve second request first
+      expect(secondResolvers.length).toBe(2);
+      secondResolvers.forEach(r => r('1. Second suggestion'));
+      await new Promise(resolve => window.setTimeout(resolve, 50));
+      expect(element.suggestions.map(s => s.value)).toEqual([
+        'Second suggestion',
+      ]);
+
+      // Resolve first request later (out-of-order settlement)
+      firstResolvers.forEach(r => r('1. Stale first suggestion'));
+      await new Promise(resolve => window.setTimeout(resolve, 50));
+      // Assert stale first suggestion was discarded by Gate 3!
+      expect(element.suggestions.map(s => s.value)).toEqual([
+        'Second suggestion',
+      ]);
+    });
+
+    it('suppresses pre-dispatch execution when sequence ID advances during debounce (Gate 2)', async () => {
+      const storage = new ConfigStorage('test', TEST_CONFIG);
+      const state = new State(storage);
+      state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
+      state.inferenceMode = 'local';
+
+      let executedCalls = 0;
+      const local = new MockLocalSuggestionProvider(async () => {
+        executedCalls++;
+        return '1. Result';
+      });
+      const router = new SuggestionProviderRouter(() => {
+        throw new Error('Cloud should not be called');
+      }, local);
+      const element = new TEST_ONLY.PvAppElement(state, router);
+
+      state.text = 'a';
+      void element.updateSuggestions(); // seq 1 scheduled
+
+      // Quickly type 'b' before debounce fires
+      state.text = 'ab';
+      void element.updateSuggestions(); // seq 2 scheduled, seq 1 cancelled
+
+      await new Promise(resolve => window.setTimeout(resolve, 200));
+
+      // Only the latest request (seq 2) should execute
+      expect(executedCalls).toBe(2); // 1 for words, 1 for sentences
     });
   });
 

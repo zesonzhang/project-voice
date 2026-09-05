@@ -6,6 +6,8 @@ spec/*.js
 src/locale-codes.ts
 src/locales/
 static/index.js
+static/inference-worker.js
+static/inference-worker.js.map
 static/locales/
 
 *storybook.log
@@ -13,4 +15,3 @@ static/locales/
 uv.lock
 requirements.txt
 .python-version
-
