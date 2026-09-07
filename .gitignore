@@ -15,3 +15,7 @@ static/locales/
 uv.lock
 requirements.txt
 .python-version
+
+/static/litert-debug/
+/static/litertlm_wasm_*.wasm
+/static/vendor/litert-lm/

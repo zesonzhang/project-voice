@@ -266,6 +266,10 @@ async function generate(
   let text = '';
   try {
     generation.conversation = await engine.createConversation({
+      prefillPrefaceOnInit: Boolean(request.history?.length),
+      preface: request.history?.length
+        ? {messages: request.history.map(message => ({...message}))}
+        : undefined,
       sessionConfig: {
         maxOutputTokens: request.maxOutputTokens ?? 256,
         samplerParams: {
@@ -274,7 +278,10 @@ async function generate(
         },
       },
     });
-    if (generation.canceled) return;
+    if (generation.canceled) {
+      post(request.requestId, 'CANCELED', {sequenceId: request.sequenceId});
+      return;
+    }
 
     const stream = generation.conversation.sendMessageStreaming(request.prompt);
     const reader = stream.getReader();

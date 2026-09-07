@@ -67,7 +67,9 @@ describe('On-device integration and privacy', () => {
   let fetchSpy: jasmine.Spy;
 
   beforeEach(async () => {
-    state = new State(new ConfigStorage('test-on-device-integration', CONFIG_DEFAULT));
+    state = new State(
+      new ConfigStorage('test-on-device-integration', CONFIG_DEFAULT),
+    );
     state.lang = LANGUAGES['englishWithSingleRowKeyboard'];
     state.inferenceMode = 'cloud';
 
@@ -110,6 +112,15 @@ describe('On-device integration and privacy', () => {
     );
 
     modelManager = new ModelManager({
+      // Each fixture owns its model state; real BroadcastChannels let previous
+      // fixtures send delayed lifecycle events into this one.
+      tabCoordinator: {
+        acquireDownloadLock: async (_modelId, _version, action) => action(),
+        broadcastProgress: () => {},
+        broadcastStateChange: () => {},
+        onMessage: () => () => {},
+        close: () => {},
+      },
       metadataStore,
       storage,
       apiClient: {

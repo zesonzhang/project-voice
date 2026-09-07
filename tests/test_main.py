@@ -57,3 +57,30 @@ def test_app_engine_static_handler_declares_isolation_and_csp():
   assert 'Cross-Origin-Embedder-Policy: require-corp' in static_handler
   assert 'Content-Security-Policy:' in static_handler
   assert "worker-src 'self'" in static_handler
+
+
+@pytest.mark.parametrize('path', [
+    '/debug/litert-lm', '/static/litert-debug/index.js',
+    '/static/litert-debug/worker.js',
+    '/static/litert-debug/litertlm_wasm_internal.wasm'
+])
+def test_litert_debug_disabled_by_default(monkeypatch, path):
+  monkeypatch.setitem(main.app.config, 'ENABLE_LITERT_DEBUG', False)
+  assert main.app.test_client().get(path).status_code == 404
+
+
+def test_litert_debug_page_is_independent_and_has_scoped_csp(monkeypatch):
+  monkeypatch.setitem(main.app.config, 'ENABLE_LITERT_DEBUG', True)
+  client = main.app.test_client()
+  response = client.get('/debug/litert-lm')
+  assert response.status_code == 200
+  assert b'/static/litert-debug/index.js' in response.data
+  assert b'/static/index.js' not in response.data
+  assert response.headers['Cache-Control'] == 'no-store'
+  assert response.headers['Cross-Origin-Embedder-Policy'] == 'require-corp'
+  assert "'wasm-unsafe-eval'" in response.headers['Content-Security-Policy']
+  assert 'https://huggingface.co' in response.headers['Content-Security-Policy']
+  assert 'https://huggingface.co' not in client.get(
+      '/').headers['Content-Security-Policy']
+  assert "'wasm-unsafe-eval'" in client.get(
+      '/static/litert-debug/worker.js').headers['Content-Security-Policy']

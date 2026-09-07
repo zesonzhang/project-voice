@@ -22,7 +22,13 @@ export interface ProbeResult {
   errorMessage?: string;
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface GenerationOptions {
+  history?: ChatMessage[];
   sequenceId: number;
   maxOutputTokens?: number;
   temperature?: number;

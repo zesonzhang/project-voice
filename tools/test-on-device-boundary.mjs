@@ -29,13 +29,15 @@ assertDoesNotContain(packageJson.scripts.watch, 'build:m0', 'watch script');
 assertDoesNotContain(localProvider, "'./m0/", 'Local provider');
 assertDoesNotContain(localProvider, "'./tests/", 'Local provider');
 
+assertDoesNotContain(packageJson.scripts.build, 'litert-debug', 'production build');
+assertDoesNotContain(packageJson.scripts.watch, 'litert-debug', 'production watch');
+assertDoesNotContain(localProvider, 'litert-debug', 'Local provider');
+
 for (const ignoredPath of [
-  '/tools/m0-harness',
-  '/templates/m0.jinja',
-  '/static/m0.js',
-  '/static/m0-inference-worker.js',
-  '/static/litertlm_wasm_*.wasm',
-  '/static/vendor/litert-lm/',
+  '/src/litert-debug/',
+  '/templates/litert-debug.jinja',
+  '/static/litert-debug/',
+  '/tools/build-litert-debug.mjs',
 ]) {
   if (!gcloudIgnore.split('\n').includes(ignoredPath)) {
     throw new Error(`.gcloudignore must exclude ${ignoredPath}`);

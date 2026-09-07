@@ -254,9 +254,26 @@ describe('Inference runtime and Worker protocol', () => {
 
       const controller = new AbortController();
       const iterator = client
-        .generate('first request', {sequenceId: 1, signal: controller.signal})
+        .generate('first request', {
+          sequenceId: 1,
+          signal: controller.signal,
+          history: [
+            {role: 'user', content: 'My favorite color is blue.'},
+            {role: 'assistant', content: 'Noted.'},
+          ],
+        })
         [Symbol.asyncIterator]();
       const pendingRead = iterator.next();
+      expect(
+        worker.requests.find(request => request.type === 'GENERATE'),
+      ).toEqual(
+        jasmine.objectContaining({
+          history: [
+            {role: 'user', content: 'My favorite color is blue.'},
+            {role: 'assistant', content: 'Noted.'},
+          ],
+        }),
+      );
       controller.abort();
       await client.cancel();
 

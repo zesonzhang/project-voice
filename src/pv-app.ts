@@ -836,6 +836,7 @@ export class PvAppElement extends SignalWatcher(LitElement) {
         if (this.inFlightRequests === 0) {
           this.isLoading = false;
         }
+      }
       // Gate 3: Final settlement check (discard stale out-of-order responses)
       if (
         !result ||

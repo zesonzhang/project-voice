@@ -37,6 +37,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = (
     os.environ.get('GAE_ENV') == 'standard' or
     os.environ.get('SESSION_COOKIE_SECURE') == '1')
+app.config['ENABLE_LITERT_DEBUG'] = os.environ.get('ENABLE_LITERT_DEBUG') == '1'
 app.config['ENABLE_M0_HARNESS'] = os.environ.get('ENABLE_M0_HARNESS') == '1'
 app.config['SIGNED_URL_RATE_LIMIT'] = int(
     os.environ.get('SIGNED_URL_RATE_LIMIT', '10'))
@@ -73,6 +74,9 @@ csrf = SeaSurf(app)
 @app.before_request
 def RestrictM0Harness():
   path = flask.request.path
+  if (path == '/debug/litert-lm' or path.startswith('/static/litert-debug/')
+     ) and not app.config['ENABLE_LITERT_DEBUG']:
+    flask.abort(404)
   is_m0_resource = (path == '/m0' or path.startswith('/static/m0'))
   if is_m0_resource and not app.config['ENABLE_M0_HARNESS']:
     flask.abort(404)
@@ -84,7 +88,18 @@ def AddSecurityHeaders(response):
   response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
   response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
   response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
-  response.headers['Content-Security-Policy'] = CONTENT_SECURITY_POLICY
+  csp = CONTENT_SECURITY_POLICY
+  if app.config['ENABLE_LITERT_DEBUG'] and (
+      flask.request.path == '/debug/litert-lm' or
+      flask.request.path.startswith('/static/litert-debug/')):
+    csp = csp.replace(
+        "script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'"
+    ).replace(
+        "connect-src 'self' https://storage.googleapis.com",
+        "connect-src 'self' https://storage.googleapis.com https://huggingface.co https://*.huggingface.co https://*.hf.co"
+    )
+    response.headers['Cache-Control'] = 'no-store'
+  response.headers['Content-Security-Policy'] = csp
   response.headers['X-Content-Type-Options'] = 'nosniff'
   response.headers['Referrer-Policy'] = 'no-referrer'
   response.headers['Permissions-Policy'] = (
@@ -122,6 +137,11 @@ def Root():
   # addition to CSRF. This prevents direct, sessionless use as a signing oracle.
   flask.session['model_download_authorized'] = True
   return flask.make_response(flask.render_template('index.jinja'))
+
+
+@app.route('/debug/litert-lm')
+def LiteRtDebug():
+  return flask.make_response(flask.render_template('litert-debug.jinja'))
 
 
 @app.route('/m0')

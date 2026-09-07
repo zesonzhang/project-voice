@@ -38,3 +38,4 @@ import './test_local-inference-privacy.js';
 import './test_model-capabilities.js';
 import './test_local-inference-regressions.js';
 import './test_model-failure-recovery.js';
+import './test_litert_debug.js';

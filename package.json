@@ -30,7 +30,10 @@
     "test": "concurrently \"npm:test:*\"",
     "deploy": "npm run build && gcloud app deploy app.yaml --no-promote",
     "postinstall": "uv sync",
-    "storybook": "storybook dev -p 6006"
+    "storybook": "storybook dev -p 6006",
+    "build:litert-debug": "node tools/build-litert-debug.mjs",
+    "watch:litert-debug": "node tools/build-litert-debug.mjs --watch",
+    "dev:litert-debug": "npm run build:litert-debug && concurrently \"npm:watch:litert-debug\" \"ENABLE_LITERT_DEBUG=1 npm run serve\""
   },
   "license": "Apache-2.0",
   "engines": {

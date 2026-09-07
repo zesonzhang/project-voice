@@ -23,3 +23,8 @@ __pycache__/
 
 # Ignore Python virtual env
 /.venv
+
+/src/litert-debug/
+/templates/litert-debug.jinja
+/static/litert-debug/
+/tools/build-litert-debug.mjs

@@ -15,6 +15,7 @@
  */
 
 import {ModelManifest} from './model-manifest.js';
+import {ChatMessage} from './model-runtime-adapter.js';
 
 export const WORKER_PROTOCOL_VERSION = 1 as const;
 export const LITERT_LM_VERSION = '0.15.0';
@@ -80,6 +81,7 @@ export type WorkerRequest =
   | (BaseRequest<'GENERATE'> & {
       sequenceId: number;
       prompt: string;
+      history?: ChatMessage[];
       maxOutputTokens?: number;
       temperature?: number;
       topP?: number;
@@ -139,7 +141,15 @@ export function isWorkerRequest(value: unknown): value is WorkerRequest {
         Number.isInteger(value.sequenceId) &&
         (value.sequenceId as number) > 0 &&
         typeof value.prompt === 'string' &&
-        value.prompt.length > 0
+        value.prompt.length > 0 &&
+        (value.history === undefined ||
+          (Array.isArray(value.history) &&
+            value.history.every(
+              message =>
+                isObject(message) &&
+                (message.role === 'user' || message.role === 'assistant') &&
+                typeof message.content === 'string',
+            )))
       );
     case 'CANCEL':
       return (

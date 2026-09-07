@@ -388,6 +388,7 @@ export class InferenceWorkerClient implements ModelRuntimeAdapter {
         type: 'GENERATE',
         sequenceId: options.sequenceId,
         prompt,
+        history: options.history,
         maxOutputTokens: options.maxOutputTokens,
         temperature: options.temperature,
         topP: options.topP,
